@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { Home, Gamepad2, Wallet, Users, User } from "lucide-react";
 
 export default function MobileNav() {
   const [location] = useLocation();
@@ -10,41 +11,41 @@ export default function MobileNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-darkblue z-50 border-t border-gray-800 md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 bg-background z-50 border-t border-border md:hidden">
       <div className="flex justify-around items-center py-2">
         <Link href="/">
-          <a className="flex flex-col items-center px-3 py-1">
-            <i className={`fas fa-home text-lg ${isActive("/")}`}></i>
+          <div className="flex flex-col items-center px-3 py-1 cursor-pointer">
+            <Home className={`h-5 w-5 ${isActive("/")}`} />
             <span className={`text-xs mt-1 ${isActive("/")}`}>Home</span>
-          </a>
+          </div>
         </Link>
         
         <Link href="/games">
-          <a className="flex flex-col items-center px-3 py-1">
-            <i className={`fas fa-gamepad text-lg ${isActive("/games")}`}></i>
+          <div className="flex flex-col items-center px-3 py-1 cursor-pointer">
+            <Gamepad2 className={`h-5 w-5 ${isActive("/games")}`} />
             <span className={`text-xs mt-1 ${isActive("/games")}`}>Games</span>
-          </a>
+          </div>
         </Link>
         
         <Link href="/wallet">
-          <a className="flex flex-col items-center px-3 py-1">
-            <i className={`fas fa-wallet text-lg ${isActive("/wallet")}`}></i>
+          <div className="flex flex-col items-center px-3 py-1 cursor-pointer">
+            <Wallet className={`h-5 w-5 ${isActive("/wallet")}`} />
             <span className={`text-xs mt-1 ${isActive("/wallet")}`}>Wallet</span>
-          </a>
+          </div>
         </Link>
         
         <Link href="/refer">
-          <a className="flex flex-col items-center px-3 py-1">
-            <i className={`fas fa-users text-lg ${isActive("/refer")}`}></i>
+          <div className="flex flex-col items-center px-3 py-1 cursor-pointer">
+            <Users className={`h-5 w-5 ${isActive("/refer")}`} />
             <span className={`text-xs mt-1 ${isActive("/refer")}`}>Refer</span>
-          </a>
+          </div>
         </Link>
         
         <Link href="/profile">
-          <a className="flex flex-col items-center px-3 py-1">
-            <i className={`fas fa-user text-lg ${isActive("/profile")}`}></i>
+          <div className="flex flex-col items-center px-3 py-1 cursor-pointer">
+            <User className={`h-5 w-5 ${isActive("/profile")}`} />
             <span className={`text-xs mt-1 ${isActive("/profile")}`}>Profile</span>
-          </a>
+          </div>
         </Link>
       </div>
     </nav>

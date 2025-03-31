@@ -1,11 +1,26 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { 
+  Home, 
+  Gamepad2, 
+  Wallet, 
+  Crown, 
+  Users, 
+  MessageSquare, 
+  Clock, 
+  LayoutDashboard, 
+  UserCog, 
+  CreditCard, 
+  Tag, 
+  LogOut 
+} from "lucide-react";
 
 export default function Sidebar() {
   const [location] = useLocation();
   const { user, logoutMutation } = useAuth();
 
-  const isAdmin = user?.role === "admin";
+  // Check for admin role with safety
+  const isAdmin = user?.username === "admin";
 
   const handleLogout = () => {
     logoutMutation.mutate();
@@ -18,9 +33,9 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="hidden md:flex fixed h-full bg-darkblue w-64 flex-col z-40">
-      <div className="p-4 border-b border-gray-800">
-        <h1 className="text-2xl font-bold text-white font-poppins">
+    <div className="hidden md:flex fixed h-full bg-card w-64 flex-col z-40 border-r border-border">
+      <div className="p-4 border-b border-border">
+        <h1 className="text-2xl font-bold text-foreground">
           <span className="text-primary">Color</span>Trade
         </h1>
       </div>
@@ -28,111 +43,111 @@ export default function Sidebar() {
       <div className="py-4 flex-grow overflow-y-auto">
         {/* User Navigation */}
         <Link href="/">
-          <a className={`flex items-center px-6 py-3 ${isActive("/")}`}>
-            <i className="fas fa-home mr-3"></i>
+          <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/")}`}>
+            <Home className="h-4 w-4 mr-3" />
             <span className="font-medium">Home</span>
-          </a>
+          </div>
         </Link>
         
         <Link href="/games">
-          <a className={`flex items-center px-6 py-3 ${isActive("/games")}`}>
-            <i className="fas fa-gamepad mr-3"></i>
+          <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/games")}`}>
+            <Gamepad2 className="h-4 w-4 mr-3" />
             <span className="font-medium">Games</span>
-          </a>
+          </div>
         </Link>
         
         <Link href="/wallet">
-          <a className={`flex items-center px-6 py-3 ${isActive("/wallet")}`}>
-            <i className="fas fa-wallet mr-3"></i>
+          <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/wallet")}`}>
+            <Wallet className="h-4 w-4 mr-3" />
             <span className="font-medium">Wallet</span>
-          </a>
+          </div>
         </Link>
         
         <Link href="/subscription">
-          <a className={`flex items-center px-6 py-3 ${isActive("/subscription")}`}>
-            <i className="fas fa-crown mr-3"></i>
+          <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/subscription")}`}>
+            <Crown className="h-4 w-4 mr-3" />
             <span className="font-medium">Subscription</span>
-          </a>
+          </div>
         </Link>
         
         <Link href="/refer">
-          <a className={`flex items-center px-6 py-3 ${isActive("/refer")}`}>
-            <i className="fas fa-users mr-3"></i>
+          <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/refer")}`}>
+            <Users className="h-4 w-4 mr-3" />
             <span className="font-medium">Refer & Earn</span>
-          </a>
+          </div>
         </Link>
         
         <Link href="/chat">
-          <a className={`flex items-center px-6 py-3 ${isActive("/chat")}`}>
-            <i className="fas fa-comments mr-3"></i>
+          <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/chat")}`}>
+            <MessageSquare className="h-4 w-4 mr-3" />
             <span className="font-medium">Chat</span>
-          </a>
+          </div>
         </Link>
         
         <Link href="/history">
-          <a className={`flex items-center px-6 py-3 ${isActive("/history")}`}>
-            <i className="fas fa-history mr-3"></i>
+          <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/history")}`}>
+            <Clock className="h-4 w-4 mr-3" />
             <span className="font-medium">History</span>
-          </a>
+          </div>
         </Link>
         
         {/* Admin Navigation */}
         {isAdmin && (
           <>
-            <div className="px-6 py-2 mt-4 text-xs font-semibold text-gray-500 uppercase">
+            <div className="px-6 py-2 mt-4 text-xs font-semibold text-muted-foreground uppercase">
               Admin Panel
             </div>
             
             <Link href="/admin">
-              <a className={`flex items-center px-6 py-3 ${isActive("/admin")}`}>
-                <i className="fas fa-tachometer-alt mr-3"></i>
+              <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/admin")}`}>
+                <LayoutDashboard className="h-4 w-4 mr-3" />
                 <span className="font-medium">Dashboard</span>
-              </a>
+              </div>
             </Link>
             
             <Link href="/admin/users">
-              <a className={`flex items-center px-6 py-3 ${isActive("/admin/users")}`}>
-                <i className="fas fa-users-cog mr-3"></i>
+              <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/admin/users")}`}>
+                <UserCog className="h-4 w-4 mr-3" />
                 <span className="font-medium">Users</span>
-              </a>
+              </div>
             </Link>
             
             <Link href="/admin/transactions">
-              <a className={`flex items-center px-6 py-3 ${isActive("/admin/transactions")}`}>
-                <i className="fas fa-money-bill-wave mr-3"></i>
+              <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/admin/transactions")}`}>
+                <CreditCard className="h-4 w-4 mr-3" />
                 <span className="font-medium">Transactions</span>
-              </a>
+              </div>
             </Link>
             
             <Link href="/admin/subscriptions">
-              <a className={`flex items-center px-6 py-3 ${isActive("/admin/subscriptions")}`}>
-                <i className="fas fa-tag mr-3"></i>
+              <div className={`flex items-center px-6 py-3 cursor-pointer ${isActive("/admin/subscriptions")}`}>
+                <Tag className="h-4 w-4 mr-3" />
                 <span className="font-medium">Subscriptions</span>
-              </a>
+              </div>
             </Link>
           </>
         )}
       </div>
       
-      <div className="p-4 border-t border-gray-800">
-        <div className="flex items-center px-2 py-2 rounded-lg bg-neutral/30">
-          <div className="w-10 h-10 rounded-full bg-primary/30 flex items-center justify-center text-primary font-bold">
+      <div className="p-4 border-t border-border">
+        <div className="flex items-center px-2 py-2 rounded-lg bg-muted/50">
+          <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
             {user?.fullName?.charAt(0) || user?.username?.charAt(0) || 'U'}
           </div>
           <div className="ml-3 flex-1">
-            <p className="font-medium text-sm text-white">
+            <p className="font-medium text-sm text-foreground">
               {user?.fullName || user?.username}
             </p>
-            <p className="text-xs text-gray-400">
-              {user?.role === 'admin' ? 'Admin' : 'User'}
+            <p className="text-xs text-muted-foreground">
+              {isAdmin ? 'Admin' : 'User'}
             </p>
           </div>
           <button 
             onClick={handleLogout}
-            className="text-gray-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
             disabled={logoutMutation.isPending}
           >
-            <i className="fas fa-sign-out-alt"></i>
+            <LogOut className="h-4 w-4" />
           </button>
         </div>
       </div>
