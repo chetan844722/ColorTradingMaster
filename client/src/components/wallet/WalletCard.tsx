@@ -5,6 +5,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format, isBefore, isAfter, isSameDay } from "date-fns";
 import { Wallet, Transaction } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -35,6 +39,8 @@ export default function WalletCard(props: WalletCardProps) {
   const [showCopied, setShowCopied] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "other">("upi");
   const [transactionId, setTransactionId] = useState("");
+  const [transactionFilter, setTransactionFilter] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<{from: Date | null, to: Date | null}>({from: null, to: null});
   const { toast } = useToast();
 
   // Fetch wallet and transactions if not provided as props
@@ -486,10 +492,139 @@ export default function WalletCard(props: WalletCardProps) {
             <TabsTrigger value="rewards" className="w-1/2">Rewards & Commissions</TabsTrigger>
           </TabsList>
           <TabsContent value="transactions" className="p-1">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex space-x-1">
+                <Button 
+                  variant={transactionFilter === "all" ? "default" : "outline"} 
+                  onClick={() => setTransactionFilter("all")}
+                  size="sm"
+                  className="text-xs h-7 px-2"
+                >
+                  All
+                </Button>
+                <Button 
+                  variant={transactionFilter === "deposit" ? "default" : "outline"} 
+                  onClick={() => setTransactionFilter("deposit")}
+                  size="sm"
+                  className="text-xs h-7 px-2"
+                >
+                  Deposits
+                </Button>
+                <Button 
+                  variant={transactionFilter === "withdrawal" ? "default" : "outline"} 
+                  onClick={() => setTransactionFilter("withdrawal")}
+                  size="sm"
+                  className="text-xs h-7 px-2"
+                >
+                  Withdrawals
+                </Button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className={`text-xs h-7 px-2 ${(dateRange.from || dateRange.to) ? "bg-primary/10" : ""}`}
+                    >
+                      <Clock className="h-3 w-3 mr-1" />
+                      {dateRange.from ? (
+                        dateRange.to ? (
+                          <>
+                            {format(dateRange.from, "dd/MM")} - {format(dateRange.to, "dd/MM")}
+                          </>
+                        ) : (
+                          format(dateRange.from, "dd/MM/yyyy")
+                        )
+                      ) : (
+                        "Date"
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      initialFocus
+                      mode="range"
+                      defaultMonth={dateRange.from || new Date()}
+                      selected={dateRange.from ? {
+                        from: dateRange.from,
+                        to: dateRange.to || undefined,
+                      } : undefined}
+                      onSelect={(range) => {
+                        setDateRange({ 
+                          from: range?.from || null, 
+                          to: range?.to || null 
+                        });
+                      }}
+                      numberOfMonths={1}
+                    />
+                    <div className="flex items-center justify-between px-3 pb-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => setDateRange({ from: null, to: null })}
+                      >
+                        Reset
+                      </Button>
+                      <Button 
+                        size="sm"
+                        onClick={() => {
+                          // Close popover
+                          const popoverElement = document.querySelector("[data-radix-popper-content-wrapper]");
+                          if (popoverElement) {
+                            // Find the close button and click it
+                            const closeButton = popoverElement.querySelector("[data-state]");
+                            if (closeButton instanceof HTMLElement) closeButton.click();
+                          }
+                        }}
+                      >
+                        Apply Filter
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <Select
+                value={transactions.length > 0 ? "newest" : ""}
+                onValueChange={(value) => {
+                  // We would implement sorting logic here in a real app
+                }}
+              >
+                <SelectTrigger className="h-7 text-xs w-[110px]">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest first</SelectItem>
+                  <SelectItem value="oldest">Oldest first</SelectItem>
+                  <SelectItem value="highest">Highest amount</SelectItem>
+                  <SelectItem value="lowest">Lowest amount</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="max-h-72 overflow-y-auto">
               {transactions.length > 0 ? (
                 <div className="space-y-1 px-1">
-                  {transactions.map((transaction) => {
+                  {transactions
+                    .filter(t => {
+                      // Apply type filter
+                      const typeMatch = transactionFilter === "all" ? true : t.type === transactionFilter;
+                      
+                      // Apply date range filter
+                      let dateMatch = true;
+                      if (dateRange.from || dateRange.to) {
+                        const transactionDate = new Date(t.createdAt);
+                        if (dateRange.from && !dateRange.to) {
+                          // Single date selected
+                          dateMatch = isSameDay(transactionDate, dateRange.from);
+                        } else if (dateRange.from && dateRange.to) {
+                          // Date range selected
+                          dateMatch = 
+                            (isAfter(transactionDate, dateRange.from) || isSameDay(transactionDate, dateRange.from)) && 
+                            (isBefore(transactionDate, dateRange.to) || isSameDay(transactionDate, dateRange.to));
+                        }
+                      }
+                      
+                      return typeMatch && dateMatch;
+                    })
+                    .map((transaction) => {
                     // Define icon and colors based on transaction type and status
                     let icon = <ArrowDownToLine className="h-4 w-4" />;
                     let bgColor = "bg-green-100";
