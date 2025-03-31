@@ -13,6 +13,7 @@ import { eq, and, gte, lte } from "drizzle-orm";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 
+// Use MemoryStore for sessions for simplicity
 const MemoryStore = createMemoryStore(session);
 
 export interface IStorage {
@@ -72,15 +73,16 @@ export interface IStorage {
   updateAdminSetting(key: string, value: string): Promise<AdminSetting>;
 
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: any; // Using any to avoid type issues with session store
 }
 
 export class DatabaseStorage implements IStorage {
-  sessionStore: session.SessionStore;
+  sessionStore: any; // Using any to avoid type issues with session store
 
   constructor() {
+    // Use in-memory session store for simplicity
     this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000, // prune expired entries every 24h
+      checkPeriod: 86400000 // prune expired entries every 24h
     });
   }
 
@@ -255,13 +257,16 @@ export class DatabaseStorage implements IStorage {
 
   // Game Bet methods
   async getGameBets(userId: number, gameRoundId?: number): Promise<GameBet[]> {
-    let query = db.select().from(gameBets).where(eq(gameBets.userId, userId));
-    
     if (gameRoundId) {
-      query = query.where(eq(gameBets.gameRoundId, gameRoundId));
+      return db.select().from(gameBets).where(
+        and(
+          eq(gameBets.userId, userId),
+          eq(gameBets.gameRoundId, gameRoundId)
+        )
+      );
+    } else {
+      return db.select().from(gameBets).where(eq(gameBets.userId, userId));
     }
-    
-    return query;
   }
 
   async createGameBet(gameBet: InsertGameBet): Promise<GameBet> {
