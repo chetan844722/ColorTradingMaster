@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 225 30% 17%;
+    --foreground: 0 0% 98%;
+    
+    --card: 234 30% 14%;
+    --card-foreground: 0 0% 98%;
+    
+    --popover: 234 30% 14%;
+    --popover-foreground: 0 0% 98%;
+    
+    --primary: 260 68% 54%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 25 100% 50%;
+    --secondary-foreground: 0 0% 100%;
+    
+    --accent: 196 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    
+    --muted: 225 20% 24%;
+    --muted-foreground: 0 0% 70%;
+    
+    --destructive: 350 79% 61%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 240 13% 25%;
+    --input: 240 13% 25%;
+    --ring: 260 68% 54%;
+    
+    --radius: 0.5rem;
+
+    --chart-1: 260 68% 54%;
+    --chart-2: 25 100% 50%;
+    --chart-3: 196 100% 50%;
+    --chart-4: 350 79% 61%;
+    --chart-5: 145 63% 42%;
+
+    --sidebar-background: 234 30% 14%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 260 68% 54%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 13% 30%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 13% 25%;
+    --sidebar-ring: 260 68% 44%;
+  }
+  
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+/* Custom animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.pulse-animation {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Game cards */
+.game-card {
+  transition: all 0.3s ease;
+}
+.game-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px -5px rgba(93, 63, 211, 0.4);
+}
+
+/* Subscription cards */
+.subscription-card {
+  transition: all 0.3s ease;
+}
+.subscription-card:hover {
+  transform: scale(1.03);
+}
+
+/* Scrollbar customization */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+::-webkit-scrollbar-thumb {
+  background: #5D3FD3;
+  border-radius: 3px;
+}
