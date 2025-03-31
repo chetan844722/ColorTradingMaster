@@ -6,18 +6,77 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Wallet, Transaction } from "@shared/schema";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowDownToLine, ArrowUpFromLine, Copy, RefreshCcw } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Copy, RefreshCcw, Loader2 } from "lucide-react";
 
 interface WalletCardProps {
-  wallet: Wallet;
-  transactions: Transaction[];
-  upiId: string;
+  wallet?: Wallet;
+  transactions?: Transaction[];
+  upiId?: string;
 }
 
-export default function WalletCard({ wallet, transactions, upiId }: WalletCardProps) {
+export default function WalletCard(props: WalletCardProps) {
+  // Fetch wallet and transactions if not provided as props
+  const { data: fetchedWallet, isLoading: isLoadingWallet } = useQuery<Wallet>({
+    queryKey: ["/api/user/wallet"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/user/wallet");
+      return await res.json();
+    },
+    enabled: !props.wallet,
+  });
+
+  const { data: fetchedTransactions, isLoading: isLoadingTransactions } = useQuery<Transaction[]>({
+    queryKey: ["/api/user/transactions"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/user/transactions");
+      return await res.json();
+    },
+    enabled: !props.transactions,
+  });
+  
+  // Use either passed props or fetched data
+  const wallet = props.wallet || fetchedWallet;
+  const transactions = props.transactions || fetchedTransactions || [];
+  const upiId = props.upiId || "8447228346@ptsbi"; // Default UPI ID
+  
+  // Show loading state if data is being fetched
+  const isLoading = (!props.wallet && isLoadingWallet) || (!props.transactions && isLoadingTransactions);
+  
+  if (isLoading) {
+    return (
+      <Card className="w-full shadow-lg border-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-2xl font-bold">My Wallet</CardTitle>
+          <CardDescription>Manage your funds and transactions</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <div className="flex justify-center items-center h-40">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  // Return error state if wallet is not available after loading
+  if (!wallet) {
+    return (
+      <Card className="w-full shadow-lg border-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-2xl font-bold">My Wallet</CardTitle>
+          <CardDescription>Manage your funds and transactions</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <div className="flex justify-center items-center h-40">
+            <p className="text-muted-foreground">Unable to load wallet data</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
   const [amount, setAmount] = useState("");
   const [showCopied, setShowCopied] = useState(false);
   const { toast } = useToast();

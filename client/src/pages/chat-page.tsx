@@ -3,6 +3,7 @@ import Layout from "@/components/layout/Layout";
 import ChatWindow from "@/components/chat/ChatWindow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import GameWinNotifications from "@/components/global/GameWinNotifications";
 
 export default function ChatPage() {
   const [activeTab, setActiveTab] = useState("global");
@@ -56,7 +57,7 @@ export default function ChatPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-darkblue">
+          <Card className="bg-darkblue mb-6">
             <CardHeader>
               <CardTitle className="text-white text-lg">Online Users</CardTitle>
             </CardHeader>
@@ -103,6 +104,16 @@ export default function ChatPage() {
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+          
+          {/* Game Wins Section */}
+          <Card className="bg-darkblue">
+            <CardHeader>
+              <CardTitle className="text-white text-lg">Recent Wins</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <GameWinNotifications compact={true} />
             </CardContent>
           </Card>
         </div>

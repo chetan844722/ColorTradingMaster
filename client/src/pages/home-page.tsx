@@ -7,6 +7,7 @@ import TransactionHistory from "@/components/home/TransactionHistory";
 import { Subscription } from "@shared/schema";
 import SubscriptionCard from "@/components/subscription/SubscriptionCard";
 import { useAuth } from "@/hooks/use-auth";
+import GameWinNotifications from "@/components/global/GameWinNotifications";
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -75,8 +76,15 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Recent Transactions */}
-      <TransactionHistory />
+      {/* Game Wins & Recent Transactions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="md:col-span-2">
+          <TransactionHistory />
+        </div>
+        <div className="md:col-span-1">
+          <GameWinNotifications />
+        </div>
+      </div>
     </Layout>
   );
 }

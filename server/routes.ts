@@ -384,12 +384,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
             winAmount
           });
           
-          // Notify user
+          // Notify user of win
           sendToUser(bet.userId, {
             type: 'game_result',
             roundId,
             result: 'win',
             amount: winAmount
+          });
+          
+          // Get user info for global notification
+          const user = await storage.getUser(bet.userId);
+          
+          // Broadcast win to all users (for win notifications widget)
+          broadcastToAll({
+            type: "user_win",
+            userId: bet.userId,
+            username: user?.username,
+            fullName: user?.fullName,
+            amount: winAmount,
+            roundId,
+            gameName: "Color Game",
+            timestamp: new Date()
           });
         } else {
           // Update bet record
@@ -418,6 +433,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(gameRound);
     } catch (error) {
       res.status(500).json({ message: 'Failed to complete game round' });
+    }
+  });
+
+  // User bets route
+  app.get('/api/user/bets', isAuthenticated, async (req, res) => {
+    try {
+      const { roundId } = req.query;
+      let bets;
+      
+      if (roundId) {
+        // Get bets for a specific round
+        bets = await storage.getGameBets(req.user.id, parseInt(roundId as string));
+      } else {
+        // Get all bets for the user
+        bets = await storage.getGameBets(req.user.id);
+      }
+      
+      res.json(bets);
+    } catch (error) {
+      res.status(500).json({ message: 'Failed to get bets' });
     }
   });
 
