@@ -1,14 +1,24 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import Layout from "@/components/layout/Layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Subscription } from "@shared/schema";
+import Layout from "@/components/layout/Layout";
+import { Button } from "@/components/ui/button";
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardHeader, 
+  CardTitle 
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -16,593 +26,472 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-
-// Form schema for subscription
-const subscriptionSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  price: z.coerce.number().min(1, "Price must be at least 1"),
-  dailyReward: z.coerce.number().min(1, "Daily reward must be at least 1"),
-  totalReward: z.coerce.number().min(1, "Total reward must be at least 1"),
-  duration: z.coerce.number().int().min(1, "Duration must be at least 1 day"),
-  features: z.string().transform(value => value.split('\n').filter(f => f.trim().length > 0)),
-  isActive: z.boolean().default(true),
-});
-
-type SubscriptionFormValues = z.infer<typeof subscriptionSchema>;
+import { Switch } from "@/components/ui/switch";
+import { 
+  PencilIcon, 
+  PlusCircle, 
+  ToggleLeft, 
+  ToggleRight, 
+  TrashIcon,
+  AlertCircle 
+} from "lucide-react";
+import { Subscription, UserSubscription } from "@shared/schema";
 
 export default function AdminSubscriptions() {
-  const { toast } = useToast();
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    price: 0,
+    daily_reward: 0,
+    total_reward: 0,
+    duration: 7,
+    features: [""],
+    is_active: true
+  });
+  const { toast } = useToast();
 
   // Fetch subscriptions
-  const { data: subscriptions, isLoading } = useQuery<Subscription[]>({
-    queryKey: ["/api/subscriptions"],
-    queryFn: getQueryFn({ on401: "throw" }),
-  });
-
-  // Form for creating subscription
-  const createForm = useForm<SubscriptionFormValues>({
-    resolver: zodResolver(subscriptionSchema),
-    defaultValues: {
-      name: "",
-      price: 0,
-      dailyReward: 0,
-      totalReward: 0,
-      duration: 7,
-      features: "",
-      isActive: true,
+  const { data: subscriptions = [], isLoading } = useQuery<Subscription[]>({
+    queryKey: ["/api/admin/subscriptions"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/admin/subscriptions");
+      return await res.json();
     },
   });
 
-  // Form for editing subscription
-  const editForm = useForm<SubscriptionFormValues>({
-    resolver: zodResolver(subscriptionSchema),
-    defaultValues: {
-      name: "",
-      price: 0,
-      dailyReward: 0,
-      totalReward: 0,
-      duration: 7,
-      features: "",
-      isActive: true,
-    },
-  });
-
-  // Create subscription mutation
-  const createSubscriptionMutation = useMutation({
-    mutationFn: async (data: SubscriptionFormValues) => {
-      return apiRequest("POST", "/api/admin/subscriptions", data);
-    },
-    onSuccess: () => {
-      toast({
-        title: "Subscription created",
-        description: "The subscription plan has been created successfully.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
-      setCreateDialogOpen(false);
-      createForm.reset();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Creation failed",
-        description: error.message,
-        variant: "destructive",
-      });
+  // Fetch active subscriptions for users
+  const { data: userSubscriptions = [] } = useQuery<UserSubscription[]>({
+    queryKey: ["/api/admin/user-subscriptions"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/admin/user-subscriptions");
+      return await res.json();
     },
   });
 
   // Update subscription mutation
   const updateSubscriptionMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: SubscriptionFormValues }) => {
-      return apiRequest("PUT", `/api/admin/subscriptions/${id}`, data);
+    mutationFn: async (data: Partial<Subscription> & { id: number }) => {
+      const { id, ...updateData } = data;
+      const res = await apiRequest("PATCH", `/api/admin/subscriptions/${id}`, updateData);
+      return await res.json();
     },
     onSuccess: () => {
       toast({
-        title: "Subscription updated",
-        description: "The subscription plan has been updated successfully.",
+        title: "Subscription Updated",
+        description: "The subscription has been updated successfully.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
-      setEditDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/subscriptions"] });
+      setSelectedSubscription(null);
     },
     onError: (error: Error) => {
       toast({
-        title: "Update failed",
+        title: "Error",
         description: error.message,
         variant: "destructive",
       });
     },
   });
 
-  // Handle create form submission
-  const onCreateSubmit = (values: SubscriptionFormValues) => {
-    createSubscriptionMutation.mutate(values);
-  };
-
-  // Handle edit form submission
-  const onEditSubmit = (values: SubscriptionFormValues) => {
-    if (selectedSubscription) {
-      updateSubscriptionMutation.mutate({
-        id: selectedSubscription.id,
-        data: values,
+  // Create subscription mutation
+  const createSubscriptionMutation = useMutation({
+    mutationFn: async (data: Omit<Subscription, "id">) => {
+      const res = await apiRequest("POST", "/api/admin/subscriptions", data);
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Subscription Created",
+        description: "The new subscription has been created successfully.",
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/subscriptions"] });
+      setIsCreating(false);
+      setForm({
+        name: "",
+        price: 0,
+        daily_reward: 0,
+        total_reward: 0,
+        duration: 7,
+        features: [""],
+        is_active: true
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete subscription mutation
+  const deleteSubscriptionMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/admin/subscriptions/${id}`);
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Subscription Deleted",
+        description: "The subscription has been deleted successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/subscriptions"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handle form change for editing or creating
+  const handleFormChange = (field: string, value: any) => {
+    if (isCreating) {
+      setForm(prev => ({ ...prev, [field]: value }));
+    } else if (selectedSubscription) {
+      setSelectedSubscription(prev => prev ? { ...prev, [field]: value } : null);
     }
   };
 
-  // Open edit dialog and populate form
-  const handleEditSubscription = (subscription: Subscription) => {
-    setSelectedSubscription(subscription);
-    
-    editForm.reset({
-      name: subscription.name,
-      price: subscription.price,
-      dailyReward: subscription.dailyReward,
-      totalReward: subscription.totalReward,
-      duration: subscription.duration,
-      features: Array.isArray(subscription.features) ? subscription.features.join('\n') : "",
-      isActive: subscription.isActive,
-    });
-    
-    setEditDialogOpen(true);
+  // Handle features change
+  const handleFeatureChange = (index: number, value: string) => {
+    if (isCreating) {
+      const updatedFeatures = [...form.features];
+      updatedFeatures[index] = value;
+      setForm(prev => ({ ...prev, features: updatedFeatures }));
+    } else if (selectedSubscription) {
+      const updatedFeatures = [...selectedSubscription.features];
+      updatedFeatures[index] = value;
+      setSelectedSubscription(prev => prev ? { ...prev, features: updatedFeatures } : null);
+    }
   };
 
-  // Calculate ROI (Return on Investment)
-  const calculateROI = (price: number, totalReward: number) => {
-    return ((totalReward - price) / price) * 100;
+  // Add a new feature field
+  const addFeatureField = () => {
+    if (isCreating) {
+      setForm(prev => ({ ...prev, features: [...prev.features, ""] }));
+    } else if (selectedSubscription) {
+      setSelectedSubscription(prev => 
+        prev ? { ...prev, features: [...prev.features, ""] } : null
+      );
+    }
+  };
+
+  // Remove a feature field
+  const removeFeatureField = (index: number) => {
+    if (isCreating) {
+      const updatedFeatures = [...form.features];
+      updatedFeatures.splice(index, 1);
+      setForm(prev => ({ ...prev, features: updatedFeatures }));
+    } else if (selectedSubscription) {
+      const updatedFeatures = [...selectedSubscription.features];
+      updatedFeatures.splice(index, 1);
+      setSelectedSubscription(prev => 
+        prev ? { ...prev, features: updatedFeatures } : null
+      );
+    }
+  };
+
+  // Count active users for each subscription
+  const getActiveUsersCount = (subscriptionId: number) => {
+    return userSubscriptions.filter(us => 
+      us.subscriptionId === subscriptionId && 
+      new Date(us.expiresAt) > new Date()
+    ).length;
+  };
+
+  // Handle save operation
+  const handleSave = () => {
+    if (isCreating) {
+      createSubscriptionMutation.mutate(form);
+    } else if (selectedSubscription) {
+      updateSubscriptionMutation.mutate(selectedSubscription);
+    }
+  };
+
+  // Toggle subscription active status
+  const toggleSubscriptionStatus = (subscription: Subscription) => {
+    updateSubscriptionMutation.mutate({
+      id: subscription.id,
+      is_active: !subscription.is_active
+    });
   };
 
   return (
     <Layout title="Admin - Subscriptions">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-2">Subscription Management</h1>
-        <p className="text-gray-400">Manage platform subscription plans and rewards</p>
-      </div>
-
-      <div className="flex justify-end mb-6">
-        <Button
-          className="bg-primary hover:bg-primary/90"
-          onClick={() => setCreateDialogOpen(true)}
-        >
-          <i className="fas fa-plus mr-2"></i> Create New Plan
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i} className="bg-darkblue animate-pulse">
-              <CardHeader>
-                <div className="h-6 bg-neutral/60 w-1/3 rounded"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-8 bg-neutral/60 w-1/2 rounded mb-4"></div>
-                <div className="h-4 bg-neutral/60 w-3/4 rounded mb-2"></div>
-                <div className="h-4 bg-neutral/60 w-2/3 rounded mb-4"></div>
-                <div className="space-y-2 mb-5">
-                  {[...Array(3)].map((_, j) => (
-                    <div key={j} className="h-4 bg-neutral/60 rounded"></div>
-                  ))}
-                </div>
-                <div className="h-10 bg-neutral/60 rounded"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {subscriptions && subscriptions.length > 0 ? (
-            subscriptions.map((subscription) => {
-              const roi = calculateROI(subscription.price, subscription.totalReward);
-              
-              return (
-                <Card key={subscription.id} className={`bg-darkblue ${!subscription.isActive ? 'opacity-60' : ''}`}>
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between items-center">
-                      <CardTitle className="text-white">{subscription.name}</CardTitle>
-                      <div className={`px-2 py-1 text-xs rounded-full ${subscription.isActive ? 'bg-success/20 text-success' : 'bg-gray-500/20 text-gray-400'}`}>
-                        {subscription.isActive ? 'Active' : 'Inactive'}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="mb-4">
-                      <div className="text-3xl font-bold text-white font-montserrat">
-                        ₹{subscription.price.toLocaleString()}
-                      </div>
-                      <div className="text-success text-sm font-medium">
-                        Daily return: ₹{subscription.dailyReward.toLocaleString()}
-                      </div>
-                      <div className="text-gray-400 text-xs">
-                        Total return: ₹{subscription.totalReward.toLocaleString()} in {subscription.duration} days
-                      </div>
-                      <div className="text-primary text-xs mt-1">
-                        ROI: {roi.toFixed(0)}%
-                      </div>
-                    </div>
-
-                    <div className="mb-5">
-                      <p className="text-sm text-gray-300 mb-2">Features:</p>
-                      <ul className="space-y-1 text-sm text-gray-400">
-                        {Array.isArray(subscription.features) && subscription.features.map((feature, index) => (
-                          <li key={index} className="flex items-start">
-                            <i className="fas fa-check text-success mr-2 mt-1 text-xs"></i>
-                            <span>{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <Button
-                      className="w-full bg-primary hover:bg-primary/90"
-                      onClick={() => handleEditSubscription(subscription)}
-                    >
-                      <i className="fas fa-edit mr-2"></i> Edit Plan
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })
-          ) : (
-            <div className="col-span-3 text-center py-12 text-gray-400">
-              <i className="fas fa-crown text-4xl mb-3"></i>
-              <p className="text-xl">No subscription plans available</p>
-              <p className="text-sm mt-2">Click the "Create New Plan" button to add a subscription plan</p>
+      <div className="container mx-auto p-4">
+        <Card className="w-full shadow-md">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl font-bold">Subscription Management</CardTitle>
+              <CardDescription>Manage subscription plans and pricing</CardDescription>
             </div>
-          )}
-        </div>
-      )}
+            <Button onClick={() => {
+              setIsCreating(true);
+              setSelectedSubscription(null);
+            }}>
+              <PlusCircle className="h-4 w-4 mr-2" />
+              Create New
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+              </div>
+            ) : subscriptions.length > 0 ? (
+              <div className="rounded-md border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Price (₹)</TableHead>
+                      <TableHead>Daily Reward (₹)</TableHead>
+                      <TableHead>Total Reward (₹)</TableHead>
+                      <TableHead>Duration (days)</TableHead>
+                      <TableHead>Active Users</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {subscriptions.map((subscription) => (
+                      <TableRow key={subscription.id}>
+                        <TableCell className="font-medium">{subscription.name}</TableCell>
+                        <TableCell>{subscription.price}</TableCell>
+                        <TableCell>{subscription.daily_reward}</TableCell>
+                        <TableCell>{subscription.total_reward}</TableCell>
+                        <TableCell>{subscription.duration}</TableCell>
+                        <TableCell>{getActiveUsersCount(subscription.id)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {subscription.is_active ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                                Active
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100">
+                                Inactive
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => toggleSubscriptionStatus(subscription)}
+                            >
+                              {subscription.is_active ? (
+                                <ToggleRight className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <ToggleLeft className="h-4 w-4 text-gray-500" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedSubscription(subscription);
+                                setIsCreating(false);
+                              }}
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="text-red-500 hover:text-red-600"
+                              onClick={() => {
+                                if (getActiveUsersCount(subscription.id) > 0) {
+                                  toast({
+                                    title: "Cannot Delete",
+                                    description: "This subscription has active users. Deactivate it instead.",
+                                    variant: "destructive",
+                                  });
+                                  return;
+                                }
+                                deleteSubscriptionMutation.mutate(subscription.id);
+                              }}
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="flex justify-center items-center h-64 bg-muted/20 rounded-md">
+                <div className="text-center">
+                  <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-muted-foreground">No subscriptions found</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Create Subscription Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="bg-darkblue border-gray-800 text-white max-w-2xl">
+      {/* Edit/Create Subscription Dialog */}
+      <Dialog open={isCreating || !!selectedSubscription} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedSubscription(null);
+          setIsCreating(false);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>Create Subscription Plan</DialogTitle>
-            <DialogDescription className="text-gray-400">
-              Add a new subscription plan to the platform
+            <DialogTitle>{isCreating ? "Create New Subscription" : "Edit Subscription"}</DialogTitle>
+            <DialogDescription>
+              {isCreating 
+                ? "Create a new subscription plan for users" 
+                : "Update the subscription details"}
             </DialogDescription>
           </DialogHeader>
-
-          <Form {...createForm}>
-            <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={createForm.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Plan Name</FormLabel>
-                      <FormControl>
-                        <Input 
-                          placeholder="e.g. Basic Plan" 
-                          className="bg-neutral border-gray-700 text-white" 
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={createForm.control}
-                  name="duration"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Duration (days)</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="number" 
-                          className="bg-neutral border-gray-700 text-white" 
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={createForm.control}
-                  name="price"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Price (₹)</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="number" 
-                          className="bg-neutral border-gray-700 text-white" 
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={createForm.control}
-                  name="dailyReward"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Daily Reward (₹)</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="number" 
-                          className="bg-neutral border-gray-700 text-white" 
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={createForm.control}
-                  name="totalReward"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Total Reward (₹)</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="number" 
-                          className="bg-neutral border-gray-700 text-white" 
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={createForm.control}
-                  name="isActive"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-gray-700 p-3 shadow-sm">
-                      <div className="space-y-0.5">
-                        <FormLabel>Active Status</FormLabel>
-                        <FormDescription className="text-xs text-gray-400">
-                          Make this plan available to users
-                        </FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
+          
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Subscription Name"
+                  value={isCreating ? form.name : selectedSubscription?.name || ""}
+                  onChange={(e) => handleFormChange("name", e.target.value)}
                 />
               </div>
-
-              <FormField
-                control={createForm.control}
-                name="features"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Features (one per line)</FormLabel>
-                    <FormControl>
-                      <Textarea 
-                        placeholder="Daily automatic payout&#10;Access to all games&#10;Priority customer support" 
-                        className="bg-neutral border-gray-700 text-white min-h-[120px]" 
-                        {...field} 
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs text-gray-400">
-                      Enter each feature on a new line. These will be displayed as bullet points.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <DialogFooter className="mt-6">
-                <Button
+              <div className="space-y-2">
+                <Label htmlFor="price">Price (₹)</Label>
+                <Input
+                  id="price"
+                  type="number"
+                  placeholder="1000"
+                  value={isCreating ? form.price : selectedSubscription?.price || 0}
+                  onChange={(e) => handleFormChange("price", Number(e.target.value))}
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="daily_reward">Daily Reward (₹)</Label>
+                <Input
+                  id="daily_reward"
+                  type="number"
+                  placeholder="600"
+                  value={isCreating ? form.daily_reward : selectedSubscription?.daily_reward || 0}
+                  onChange={(e) => handleFormChange("daily_reward", Number(e.target.value))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="total_reward">Total Reward (₹)</Label>
+                <Input
+                  id="total_reward"
+                  type="number"
+                  placeholder="4200"
+                  value={isCreating ? form.total_reward : selectedSubscription?.total_reward || 0}
+                  onChange={(e) => handleFormChange("total_reward", Number(e.target.value))}
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="duration">Duration (Days)</Label>
+                <Input
+                  id="duration"
+                  type="number"
+                  placeholder="7"
+                  value={isCreating ? form.duration : selectedSubscription?.duration || 7}
+                  onChange={(e) => handleFormChange("duration", Number(e.target.value))}
+                />
+              </div>
+              <div className="space-y-2 flex items-end">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="is_active"
+                    checked={isCreating ? form.is_active : selectedSubscription?.is_active || false}
+                    onCheckedChange={(checked) => handleFormChange("is_active", checked)}
+                  />
+                  <Label htmlFor="is_active">Active</Label>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label>Features</Label>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={addFeatureField}
                   type="button"
-                  variant="outline"
-                  className="border-gray-700 text-white"
-                  onClick={() => setCreateDialogOpen(false)}
                 >
-                  Cancel
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Add Feature
                 </Button>
-                <Button
-                  type="submit"
-                  className="bg-primary hover:bg-primary/90"
-                  disabled={createSubscriptionMutation.isPending}
-                >
-                  {createSubscriptionMutation.isPending ? "Creating..." : "Create Plan"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
+              </div>
+              
+              <div className="space-y-2">
+                {(isCreating ? form.features : selectedSubscription?.features || []).map((feature, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder={`Feature ${index + 1}`}
+                      value={feature}
+                      onChange={(e) => handleFeatureChange(index, e.target.value)}
+                    />
+                    {(isCreating ? form.features : selectedSubscription?.features || []).length > 1 && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => removeFeatureField(index)}
+                        type="button"
+                      >
+                        <TrashIcon className="h-4 w-4 text-red-500" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedSubscription(null);
+                setIsCreating(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSave}
+              disabled={
+                createSubscriptionMutation.isPending || 
+                updateSubscriptionMutation.isPending
+              }
+            >
+              {(createSubscriptionMutation.isPending || updateSubscriptionMutation.isPending)
+                ? "Saving..."
+                : "Save Changes"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Edit Subscription Dialog */}
-      {selectedSubscription && (
-        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="bg-darkblue border-gray-800 text-white max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Edit Subscription Plan</DialogTitle>
-              <DialogDescription className="text-gray-400">
-                Modify the existing subscription plan
-              </DialogDescription>
-            </DialogHeader>
-
-            <Form {...editForm}>
-              <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={editForm.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Plan Name</FormLabel>
-                        <FormControl>
-                          <Input 
-                            placeholder="e.g. Basic Plan" 
-                            className="bg-neutral border-gray-700 text-white" 
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={editForm.control}
-                    name="duration"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Duration (days)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            className="bg-neutral border-gray-700 text-white" 
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={editForm.control}
-                    name="price"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Price (₹)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            className="bg-neutral border-gray-700 text-white" 
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={editForm.control}
-                    name="dailyReward"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Daily Reward (₹)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            className="bg-neutral border-gray-700 text-white" 
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={editForm.control}
-                    name="totalReward"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Total Reward (₹)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="number" 
-                            className="bg-neutral border-gray-700 text-white" 
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={editForm.control}
-                    name="isActive"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border border-gray-700 p-3 shadow-sm">
-                        <div className="space-y-0.5">
-                          <FormLabel>Active Status</FormLabel>
-                          <FormDescription className="text-xs text-gray-400">
-                            Make this plan available to users
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={editForm.control}
-                  name="features"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Features (one per line)</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="Daily automatic payout&#10;Access to all games&#10;Priority customer support" 
-                          className="bg-neutral border-gray-700 text-white min-h-[120px]" 
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormDescription className="text-xs text-gray-400">
-                        Enter each feature on a new line. These will be displayed as bullet points.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <DialogFooter className="mt-6">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-gray-700 text-white"
-                    onClick={() => setEditDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-primary hover:bg-primary/90"
-                    disabled={updateSubscriptionMutation.isPending}
-                  >
-                    {updateSubscriptionMutation.isPending ? "Saving..." : "Save Changes"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      )}
     </Layout>
   );
 }

@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { useWebSocket } from "@/hooks/use-websocket";
 import { useAuth } from "@/hooks/use-auth";
+import { useWebSocket } from "@/hooks/use-websocket";
+import { apiRequest } from "@/lib/queryClient";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 import { ChatMessage } from "@shared/schema";
-import { format } from "date-fns";
+import { Send, AlertCircle } from "lucide-react";
 
 interface ChatMessageWithUser extends ChatMessage {
   username?: string;
@@ -15,195 +19,196 @@ interface ChatMessageWithUser extends ChatMessage {
 }
 
 export default function ChatWindow() {
-  const { user } = useAuth();
   const [message, setMessage] = useState("");
-  const [chatMessages, setChatMessages] = useState<ChatMessageWithUser[]>([]);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<ChatMessageWithUser[]>([]);
+  const messagesEndRef = useRef<null | HTMLDivElement>(null);
+  const { user } = useAuth();
+  const { toast } = useToast();
 
   // Fetch initial chat messages
-  const { data: initialChatMessages, isLoading } = useQuery<ChatMessage[]>({
+  const { data: initialMessages = [], isLoading } = useQuery<ChatMessage[]>({
     queryKey: ["/api/chat/messages"],
-    queryFn: getQueryFn({ on401: "throw" }),
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/chat/messages");
+      return await res.json();
+    },
   });
 
-  // WebSocket connection for real-time chat
-  const { sendMessage, status: wsStatus } = useWebSocket({
+  // Set up WebSocket connection
+  const { status, sendMessage } = useWebSocket({
     onMessage: (data) => {
       if (data.type === "chat") {
-        // Add new message to chat
-        setChatMessages((prev) => [...prev, data.message]);
-        
-        // Scroll to bottom
-        setTimeout(() => {
-          if (chatContainerRef.current) {
-            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-          }
-        }, 100);
+        setMessages((prev) => [...prev, data.message]);
       }
-    }
+    },
   });
 
-  // Set initial messages when data is loaded
+  // Initialize WebSocket connection with auth
   useEffect(() => {
-    if (initialChatMessages) {
-      setChatMessages(initialChatMessages);
-      
-      // Scroll to bottom
-      setTimeout(() => {
-        if (chatContainerRef.current) {
-          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        }
-      }, 100);
+    if (status === "open" && user) {
+      sendMessage({
+        type: "auth",
+        userId: user.id,
+      });
     }
-  }, [initialChatMessages]);
+  }, [status, user, sendMessage]);
 
-  // Handle sending a new message
+  // Set initial messages
+  useEffect(() => {
+    if (initialMessages.length) {
+      setMessages(initialMessages);
+    }
+  }, [initialMessages]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Send message handler
   const handleSendMessage = async () => {
     if (!message.trim() || !user) return;
-    
+
     try {
+      // Send via REST API (more reliable)
       await apiRequest("POST", "/api/chat/messages", { message: message.trim() });
       
-      // Clear input
-      setMessage("");
-      
-      // Also send via WebSocket for immediate update
+      // Also send via WebSocket for real-time updates
       sendMessage({
         type: "chat",
-        message: message.trim()
+        message: message.trim(),
       });
+      
+      setMessage("");
     } catch (error) {
-      console.error("Failed to send message:", error);
+      toast({
+        title: "Message Failed",
+        description: "Could not send your message. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
-  // Handle Enter key press
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSendMessage();
-    }
-  };
-
-  // Generate initials from name
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .substring(0, 2);
-  };
-
-  // Get time ago string
+  // Format time
   const getTimeAgo = (date: Date) => {
     const now = new Date();
     const messageDate = new Date(date);
-    const diffInMinutes = Math.floor((now.getTime() - messageDate.getTime()) / (1000 * 60));
-    
-    if (diffInMinutes < 1) return "Just now";
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `${diffInHours}h ago`;
-    
-    return format(messageDate, "MMM d");
+    const diffMs = now.getTime() - messageDate.getTime();
+    const diffSecs = Math.round(diffMs / 1000);
+    const diffMins = Math.round(diffSecs / 60);
+    const diffHours = Math.round(diffMins / 60);
+    const diffDays = Math.round(diffHours / 24);
+
+    if (diffSecs < 60) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'yesterday';
+    return `${diffDays}d ago`;
   };
 
-  // Generate random color from username (for consistent colors per user)
-  const getUserColor = (username: string) => {
-    const colors = [
-      "primary", "secondary", "accent", "success", "danger"
-    ];
-    
-    let hash = 0;
-    for (let i = 0; i < username.length; i++) {
-      hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  // Get user initials for avatar
+  const getUserInitials = (userId: number, username?: string, fullName?: string) => {
+    if (fullName) {
+      const names = fullName.split(' ');
+      if (names.length >= 2) {
+        return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
+      }
+      return fullName.substring(0, 2).toUpperCase();
     }
-    
-    const index = Math.abs(hash) % colors.length;
-    return colors[index];
+    if (username) {
+      return username.substring(0, 2).toUpperCase();
+    }
+    return `U${userId}`;
   };
 
   return (
-    <Card className="bg-darkblue rounded-xl overflow-hidden h-full flex flex-col">
-      <div className="p-4 border-b border-gray-800">
-        <h3 className="text-white font-medium">Live Chat</h3>
-      </div>
-      
-      <div 
-        ref={chatContainerRef}
-        className="flex-grow p-4 overflow-y-auto" 
-        style={{ maxHeight: "calc(100vh - 250px)" }}
-      >
-        {isLoading ? (
-          <div className="flex justify-center items-center h-full">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-          </div>
-        ) : chatMessages.length === 0 ? (
-          <div className="flex justify-center items-center h-full text-gray-400">
-            No messages yet. Start the conversation!
-          </div>
-        ) : (
-          chatMessages.map((msg) => {
-            const isCurrentUser = msg.userId === user?.id;
-            const color = getUserColor(msg.username || msg.userId.toString());
-            const initials = msg.fullName 
-              ? getInitials(msg.fullName) 
-              : msg.username 
-                ? getInitials(msg.username) 
-                : "U";
-                
-            return (
-              <div key={msg.id} className="mb-3">
-                <div className="flex items-start">
-                  <div className={`w-8 h-8 rounded-full bg-${color}/20 flex items-center justify-center mr-2 flex-shrink-0`}>
-                    <span className={`text-${color} text-xs font-bold`}>{initials}</span>
-                  </div>
-                  <div>
-                    <div className="flex items-center">
-                      <p className="text-white text-sm font-medium">
-                        {msg.fullName || msg.username || `User ${msg.userId}`}
-                        {isCurrentUser && <span className="text-xs text-primary ml-2">(You)</span>}
-                      </p>
-                      <span className="text-gray-500 text-xs ml-2">
-                        {getTimeAgo(new Date(msg.createdAt))}
-                      </span>
-                    </div>
-                    <p className="text-gray-300 text-sm">{msg.message}</p>
+    <Card className="flex flex-col h-full">
+      <CardHeader className="px-4 py-3 border-b">
+        <CardTitle className="text-xl font-semibold">Live Chat</CardTitle>
+      </CardHeader>
+      <CardContent className="flex-1 p-0">
+        <ScrollArea className="h-[calc(100vh-13rem)] md:h-[600px]">
+          <div className="p-4 space-y-4">
+            {isLoading ? (
+              // Loading Skeleton
+              Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-[200px]" />
+                    <Skeleton className="h-4 w-[150px]" />
                   </div>
                 </div>
+              ))
+            ) : messages.length > 0 ? (
+              messages.map((msg) => (
+                <div 
+                  key={msg.id} 
+                  className={`flex items-start gap-3 ${
+                    user && msg.userId === user.id ? 'flex-row-reverse' : ''
+                  }`}
+                >
+                  <Avatar>
+                    <AvatarFallback className="bg-primary text-white">
+                      {getUserInitials(msg.userId, msg.username, msg.fullName)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className={`space-y-1 ${
+                    user && msg.userId === user.id
+                      ? 'text-right'
+                      : 'text-left'
+                  }`}>
+                    <div className={`px-4 py-2 rounded-lg inline-block max-w-[80%] break-words ${
+                      user && msg.userId === user.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted'
+                    }`}>
+                      {msg.message}
+                    </div>
+                    <div className="flex items-center text-xs text-muted-foreground gap-1">
+                      <span className="font-medium">
+                        {msg.username || `User ${msg.userId}`}
+                      </span>
+                      <span>•</span>
+                      <span>{getTimeAgo(new Date(msg.createdAt))}</span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="h-40 flex flex-col items-center justify-center text-center px-4">
+                <AlertCircle className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-muted-foreground">No messages yet. Start the conversation!</p>
               </div>
-            );
-          })
-        )}
-      </div>
-      
-      <div className="p-3 border-t border-gray-800">
-        <div className="flex items-center">
-          <Input 
-            type="text" 
-            placeholder="Type a message..." 
-            className="w-full bg-neutral border border-gray-700 rounded-lg py-2 px-3 text-white placeholder-gray-500 text-sm"
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
+      </CardContent>
+      <CardFooter className="p-3 border-t">
+        <div className="flex w-full items-end gap-2">
+          <Textarea
+            placeholder="Type your message..."
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyPress}
-            disabled={wsStatus !== "open"}
+            className="resize-none min-h-[60px]"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
           />
           <Button 
-            className="ml-2 w-8 h-8 flex items-center justify-center bg-primary hover:bg-primary/90 text-white rounded-lg"
+            size="icon" 
+            className="h-[60px] w-[60px] rounded-md"
             onClick={handleSendMessage}
-            disabled={!message.trim() || wsStatus !== "open"}
+            disabled={!message.trim() || status !== "open"}
           >
-            <i className="fas fa-paper-plane"></i>
+            <Send className="h-5 w-5" />
           </Button>
         </div>
-        {wsStatus !== "open" && (
-          <p className="text-xs text-yellow-500 mt-1">
-            <i className="fas fa-exclamation-triangle mr-1"></i>
-            Connecting to chat server...
-          </p>
-        )}
-      </div>
+      </CardFooter>
     </Card>
   );
 }

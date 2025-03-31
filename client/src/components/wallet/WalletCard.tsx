@@ -1,269 +1,308 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Wallet } from "@shared/schema";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Wallet, Transaction } from "@shared/schema";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ArrowDownToLine, ArrowUpFromLine, Copy, RefreshCcw } from "lucide-react";
 
-export default function WalletCard() {
+interface WalletCardProps {
+  wallet: Wallet;
+  transactions: Transaction[];
+  upiId: string;
+}
+
+export default function WalletCard({ wallet, transactions, upiId }: WalletCardProps) {
+  const [amount, setAmount] = useState("");
+  const [showCopied, setShowCopied] = useState(false);
   const { toast } = useToast();
-  const [amount, setAmount] = useState<string>("");
-  const [depositModalOpen, setDepositModalOpen] = useState<boolean>(false);
-  const [withdrawModalOpen, setWithdrawModalOpen] = useState<boolean>(false);
-
-  // Fetch wallet data
-  const { data: wallet, isLoading } = useQuery<Wallet>({
-    queryKey: ["/api/user/wallet"],
-    queryFn: getQueryFn({ on401: "throw" }),
-  });
-
-  // Deposit mutation
-  const depositMutation = useMutation({
-    mutationFn: async (amount: number) => {
-      return apiRequest("POST", "/api/user/transaction", { 
-        amount,
-        type: "deposit",
-        status: "pending",
-        description: "Deposit request"
-      });
+  
+  const addMoneyMutation = useMutation({
+    mutationFn: async (data: { amount: number; type: "deposit" }) => {
+      const res = await apiRequest("POST", "/api/user/transaction", data);
+      return await res.json();
     },
     onSuccess: () => {
       toast({
-        title: "Deposit request submitted",
-        description: "Your deposit will be processed once approved by admin.",
+        title: "Request Submitted",
+        description: "Your deposit request has been submitted for admin approval.",
       });
-      setDepositModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/user/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/transactions"] });
       setAmount("");
     },
     onError: (error: Error) => {
       toast({
-        title: "Deposit failed",
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const withdrawMoneyMutation = useMutation({
+    mutationFn: async (data: { amount: number; type: "withdrawal" }) => {
+      const res = await apiRequest("POST", "/api/user/transaction", data);
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Request Submitted",
+        description: "Your withdrawal request has been submitted for admin approval.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/transactions"] });
+      setAmount("");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
         description: error.message,
         variant: "destructive",
       });
     },
   });
 
-  // Withdraw mutation
-  const withdrawMutation = useMutation({
-    mutationFn: async (amount: number) => {
-      return apiRequest("POST", "/api/user/transaction", { 
-        amount: -amount, // Negative amount for withdrawals
-        type: "withdrawal",
-        status: "pending",
-        description: "Withdrawal request"
-      });
-    },
-    onSuccess: () => {
-      toast({
-        title: "Withdrawal request submitted",
-        description: "Your withdrawal will be processed once approved by admin.",
-      });
-      setWithdrawModalOpen(false);
-      setAmount("");
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Withdrawal failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleDeposit = () => {
-    const amountNumber = parseFloat(amount);
-    if (isNaN(amountNumber) || amountNumber <= 0) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter a valid amount to deposit.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    depositMutation.mutate(amountNumber);
+  const handleCopyUPI = () => {
+    navigator.clipboard.writeText(upiId);
+    setShowCopied(true);
+    setTimeout(() => setShowCopied(false), 2000);
   };
 
-  const handleWithdrawal = () => {
-    const amountNumber = parseFloat(amount);
-    if (isNaN(amountNumber) || amountNumber <= 0) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter a valid amount to withdraw.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (wallet && amountNumber > wallet.balance) {
-      toast({
-        title: "Insufficient balance",
-        description: "You don't have enough balance to withdraw this amount.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    withdrawMutation.mutate(amountNumber);
-  };
-
-  if (isLoading) {
-    return (
-      <Card className="bg-gradient-to-r from-primary to-accent/90 rounded-xl shadow-lg relative overflow-hidden">
-        <CardContent className="pt-6 pb-6">
-          <div className="animate-pulse">
-            <div className="h-6 bg-white/20 rounded w-1/4 mb-2"></div>
-            <div className="h-8 bg-white/20 rounded w-1/2 mb-4"></div>
-            <div className="h-8 bg-white/20 rounded w-full mb-4"></div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
+  const pendingTransactions = transactions.filter(t => t.status === "pending");
+  
   return (
-    <Card className="bg-gradient-to-r from-primary to-accent/90 rounded-xl shadow-lg relative overflow-hidden">
-      <CardContent className="pt-6 pb-6">
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-white/80 text-sm font-medium">Total Balance</p>
-            <h2 className="text-3xl font-bold text-white mt-1 font-montserrat">
-              ₹{wallet?.balance.toLocaleString() || '0'}
-            </h2>
-            <div className="flex mt-4 gap-3">
-              <Button 
-                className="bg-white/20 hover:bg-white/30 text-white"
-                onClick={() => setDepositModalOpen(true)}
-              >
-                <i className="fas fa-plus mr-2"></i> Add Money
-              </Button>
-              <Button 
-                className="bg-white/20 hover:bg-white/30 text-white"
-                onClick={() => setWithdrawModalOpen(true)}
-              >
-                <i className="fas fa-arrow-right mr-2"></i> Withdraw
-              </Button>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="bg-white/20 rounded-lg px-3 py-2">
-              <p className="text-white/80 text-xs">Last Transaction</p>
-              <p className="text-white text-sm font-medium">+ ₹1,200</p>
-            </div>
-          </div>
+    <Card className="w-full shadow-lg border-2">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-2xl font-bold">My Wallet</CardTitle>
+        <CardDescription>Manage your funds and transactions</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-4">
+        <div className="bg-gradient-to-r from-primary/80 to-primary p-6 rounded-xl shadow-md mb-6">
+          <p className="text-sm font-medium text-white/80">Available Balance</p>
+          <h2 className="text-3xl font-bold text-white">₹{wallet.balance.toFixed(2)}</h2>
         </div>
-        <div className="absolute -right-10 -bottom-10 w-40 h-40 rounded-full bg-white/10"></div>
-        <div className="absolute -right-5 -bottom-5 w-20 h-20 rounded-full bg-white/10"></div>
-      </CardContent>
-
-      {/* Deposit Modal */}
-      {depositModalOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-darkblue rounded-xl p-6 w-11/12 max-w-md">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-white font-poppins">Deposit Money</h2>
-              <button 
-                className="text-gray-400 hover:text-white" 
-                onClick={() => setDepositModalOpen(false)}
-              >
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-            <div className="mb-4">
-              <label className="block text-gray-300 text-sm font-medium mb-2">
-                Amount (₹)
-              </label>
-              <Input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="Enter amount to deposit"
-                className="w-full bg-neutral border border-gray-700"
-              />
-            </div>
-            <div className="mb-6">
-              <p className="text-sm text-gray-400">
-                Your deposit will be available in your wallet once approved by admin.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Button 
-                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white"
-                onClick={() => setDepositModalOpen(false)}
-              >
-                Cancel
+        
+        <div className="flex gap-2 mb-6">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button className="w-1/2" variant="outline">
+                <ArrowDownToLine className="mr-2 h-4 w-4" />
+                Add Money
               </Button>
-              <Button 
-                className="flex-1 bg-primary hover:bg-primary/90 text-white"
-                onClick={handleDeposit}
-                disabled={depositMutation.isPending}
-              >
-                {depositMutation.isPending ? "Processing..." : "Deposit"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Withdraw Modal */}
-      {withdrawModalOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-darkblue rounded-xl p-6 w-11/12 max-w-md">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-white font-poppins">Withdraw Money</h2>
-              <button 
-                className="text-gray-400 hover:text-white" 
-                onClick={() => setWithdrawModalOpen(false)}
-              >
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-            <div className="mb-4">
-              <label className="block text-gray-300 text-sm font-medium mb-2">
-                Amount (₹)
-              </label>
-              <Input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="Enter amount to withdraw"
-                className="w-full bg-neutral border border-gray-700"
-              />
-            </div>
-            <div className="mb-2">
-              <label className="block text-gray-300 text-sm font-medium mb-2">
-                Available Balance
-              </label>
-              <div className="bg-neutral/50 py-2 px-3 rounded-md">
-                <p className="text-white">₹{wallet?.balance.toLocaleString() || '0'}</p>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Add Money to Wallet</DialogTitle>
+                <DialogDescription>
+                  Transfer money to the UPI ID below and submit your request for approval.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="p-2 bg-muted rounded-md flex items-center justify-between">
+                  <span className="text-sm font-medium">{upiId}</span>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={handleCopyUPI}
+                    className="h-8 w-8"
+                  >
+                    {showCopied ? <RefreshCcw className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="amount" className="text-right">
+                    Amount
+                  </Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    placeholder="Enter amount"
+                    className="col-span-3"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                </div>
               </div>
-            </div>
-            <div className="mb-6">
-              <p className="text-sm text-gray-400">
-                Your withdrawal will be processed once approved by admin.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Button 
-                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white"
-                onClick={() => setWithdrawModalOpen(false)}
-              >
-                Cancel
+              <DialogFooter>
+                <Button 
+                  onClick={() => {
+                    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+                      toast({
+                        title: "Invalid Amount",
+                        description: "Please enter a valid amount greater than 0",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    addMoneyMutation.mutate({ 
+                      amount: Number(amount),
+                      type: "deposit"
+                    });
+                  }}
+                  disabled={addMoneyMutation.isPending}
+                >
+                  {addMoneyMutation.isPending ? "Processing..." : "Submit Request"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button className="w-1/2" variant="outline">
+                <ArrowUpFromLine className="mr-2 h-4 w-4" />
+                Withdraw
               </Button>
-              <Button 
-                className="flex-1 bg-primary hover:bg-primary/90 text-white"
-                onClick={handleWithdrawal}
-                disabled={withdrawMutation.isPending}
-              >
-                {withdrawMutation.isPending ? "Processing..." : "Withdraw"}
-              </Button>
-            </div>
-          </div>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Withdraw Money</DialogTitle>
+                <DialogDescription>
+                  Submit your withdrawal request for admin approval.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="withdraw-amount" className="text-right">
+                    Amount
+                  </Label>
+                  <Input
+                    id="withdraw-amount"
+                    type="number"
+                    placeholder="Enter amount"
+                    className="col-span-3"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button 
+                  onClick={() => {
+                    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+                      toast({
+                        title: "Invalid Amount",
+                        description: "Please enter a valid amount greater than 0",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    
+                    if (Number(amount) > wallet.balance) {
+                      toast({
+                        title: "Insufficient Balance",
+                        description: "You don't have enough balance for this withdrawal",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    
+                    withdrawMoneyMutation.mutate({ 
+                      amount: Number(amount),
+                      type: "withdrawal"
+                    });
+                  }}
+                  disabled={withdrawMoneyMutation.isPending}
+                >
+                  {withdrawMoneyMutation.isPending ? "Processing..." : "Submit Request"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
-      )}
+          
+        {pendingTransactions.length > 0 && (
+          <div className="mb-6 p-4 border rounded-lg bg-yellow-50 dark:bg-yellow-950/20">
+            <h3 className="font-medium text-sm text-yellow-800 dark:text-yellow-300 mb-2">Pending Transactions</h3>
+            <ul className="space-y-2">
+              {pendingTransactions.map((transaction) => (
+                <li key={transaction.id} className="text-sm flex justify-between">
+                  <span>{transaction.type === "deposit" ? "Deposit" : "Withdrawal"}</span>
+                  <span className="font-medium">₹{transaction.amount}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        
+        <Tabs defaultValue="transactions" className="w-full">
+          <TabsList className="w-full">
+            <TabsTrigger value="transactions" className="w-1/2">Transactions</TabsTrigger>
+            <TabsTrigger value="rewards" className="w-1/2">Rewards & Commissions</TabsTrigger>
+          </TabsList>
+          <TabsContent value="transactions" className="p-1">
+            <div className="max-h-60 overflow-y-auto">
+              {transactions.length > 0 ? (
+                <ul className="space-y-2">
+                  {transactions.map((transaction) => (
+                    <li key={transaction.id} className="border-b pb-2 flex justify-between items-center">
+                      <div>
+                        <p className="font-medium">{transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(transaction.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className={transaction.type === "deposit" ? "text-green-600" : "text-red-600"}>
+                          {transaction.type === "deposit" ? "+" : "-"}₹{transaction.amount}
+                        </p>
+                        <p className={`text-xs ${
+                          transaction.status === "approved" 
+                            ? "text-green-600" 
+                            : transaction.status === "rejected" 
+                            ? "text-red-600" 
+                            : "text-yellow-600"
+                        }`}>
+                          {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-center py-4 text-muted-foreground">No transactions yet</p>
+              )}
+            </div>
+          </TabsContent>
+          <TabsContent value="rewards" className="p-1">
+            <div className="max-h-60 overflow-y-auto">
+              {transactions.filter(t => t.type === "reward" || t.type === "commission").length > 0 ? (
+                <ul className="space-y-2">
+                  {transactions
+                    .filter(t => t.type === "reward" || t.type === "commission")
+                    .map((transaction) => (
+                      <li key={transaction.id} className="border-b pb-2 flex justify-between items-center">
+                        <div>
+                          <p className="font-medium">{transaction.type === "reward" ? "Daily Reward" : "Referral Commission"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(transaction.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-green-600">+₹{transaction.amount}</p>
+                          <p className="text-xs text-green-600">Completed</p>
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+              ) : (
+                <p className="text-center py-4 text-muted-foreground">No rewards or commissions yet</p>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+      <CardFooter className="pt-0 border-t-0 flex justify-end">
+        <p className="text-xs text-muted-foreground">
+          All transactions are subject to admin approval
+        </p>
+      </CardFooter>
     </Card>
   );
 }
