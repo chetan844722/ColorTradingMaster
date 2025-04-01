@@ -1,8 +1,7 @@
-import { db } from '../server/db.js';
-import { users, wallets, subscriptions } from '../shared/schema.js';
+import pkg from 'pg';
+const { Pool } = pkg;
 import { scrypt, randomBytes } from 'crypto';
 import { promisify } from 'util';
-import { eq } from 'drizzle-orm';
 
 const scryptAsync = promisify(scrypt);
 
@@ -15,30 +14,48 @@ async function hashPassword(password) {
 async function initializeData() {
   console.log('Starting data initialization...');
 
-  try {
-    // Check if admin user exists
-    const existingAdmin = await db.select().from(users).where(eq(users.username, 'admin'));
+  if (!process.env.DATABASE_URL) {
+    console.error('DATABASE_URL environment variable is not set');
+    process.exit(1);
+  }
 
-    if (existingAdmin.length === 0) {
+  try {
+    // Connect to the database
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL
+    });
+
+    const client = await pool.connect();
+    console.log('Connected to the database');
+
+    // Check if admin user exists
+    const adminCheck = await client.query(`
+      SELECT * FROM users WHERE username = 'admin'
+    `);
+
+    let adminId = null;
+
+    if (adminCheck.rows.length === 0) {
       console.log('Creating admin user...');
       
       // Create admin user
-      const [admin] = await db.insert(users).values({
-        username: 'admin',
-        password: await hashPassword('admin123'), // Change this to a secure password
-        fullName: 'Administrator',
-        email: 'admin@example.com',
-        role: 'admin',
-        referralCode: randomBytes(4).toString('hex')
-      }).returning();
-
-      console.log('Admin user created successfully');
+      const referralCode = randomBytes(4).toString('hex');
+      const hashedPassword = await hashPassword('admin123'); // Change this to a secure password
+      
+      const adminResult = await client.query(`
+        INSERT INTO users (username, password, full_name, email, role, referral_code) 
+        VALUES ($1, $2, $3, $4, $5, $6) 
+        RETURNING id
+      `, ['admin', hashedPassword, 'Administrator', 'admin@example.com', 'admin', referralCode]);
+      
+      adminId = adminResult.rows[0].id;
+      console.log('Admin user created successfully with ID:', adminId);
 
       // Create wallet for admin
-      await db.insert(wallets).values({
-        userId: admin.id,
-        balance: 0
-      });
+      await client.query(`
+        INSERT INTO wallets (user_id, balance) 
+        VALUES ($1, $2)
+      `, [adminId, 0]);
 
       console.log('Admin wallet created successfully');
     } else {
@@ -46,46 +63,24 @@ async function initializeData() {
     }
 
     // Check if default subscriptions exist
-    const existingSubscriptions = await db.select().from(subscriptions);
+    const subscriptionsCheck = await client.query(`
+      SELECT * FROM subscriptions
+    `);
 
-    if (existingSubscriptions.length === 0) {
+    if (subscriptionsCheck.rows.length === 0) {
       console.log('Creating default subscriptions...');
       
       // Create default subscriptions
-      await db.insert(subscriptions).values([
-        {
-          name: 'Basic Plan',
-          price: 1000,
-          dailyReward: 600,
-          totalReward: 4200,
-          duration: 7,
-          level: 1,
-          features: ['Daily rewards: ₹600/day', '7-day reward period', 'Access to all games'],
-          isActive: true,
-          withdrawalWaitDays: 15
-        },
-        {
-          name: 'Premium Plan',
-          price: 2000,
-          dailyReward: 1200,
-          totalReward: 8400,
-          duration: 7,
-          level: 2,
-          features: ['Daily rewards: ₹1,200/day', '7-day reward period', 'Premium game access', 'Priority support'],
-          isActive: true,
-          withdrawalWaitDays: 15
-        },
-        {
-          name: 'VIP Plan',
-          price: 10000,
-          dailyReward: 11425,
-          totalReward: 79975,
-          duration: 7,
-          level: 3,
-          features: ['Daily rewards: ₹11,425/day', '7-day reward period', 'VIP game access', 'Dedicated support', 'Exclusive bonuses'],
-          isActive: true,
-          withdrawalWaitDays: 15
-        }
+      await client.query(`
+        INSERT INTO subscriptions (name, price, daily_reward, total_reward, duration, level, features, is_active, withdrawal_wait_days) 
+        VALUES 
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9),
+        ($10, $11, $12, $13, $14, $15, $16, $17, $18),
+        ($19, $20, $21, $22, $23, $24, $25, $26, $27)
+      `, [
+        'Basic Plan', 1000, 600, 4200, 7, 1, '["Daily rewards: ₹600/day", "7-day reward period", "Access to all games"]', true, 15,
+        'Premium Plan', 2000, 1200, 8400, 7, 2, '["Daily rewards: ₹1,200/day", "7-day reward period", "Premium game access", "Priority support"]', true, 15,
+        'VIP Plan', 10000, 11425, 79975, 7, 3, '["Daily rewards: ₹11,425/day", "7-day reward period", "VIP game access", "Dedicated support", "Exclusive bonuses"]', true, 15
       ]);
 
       console.log('Default subscriptions created successfully');
@@ -93,6 +88,9 @@ async function initializeData() {
       console.log('Subscriptions already exist, skipping creation');
     }
 
+    await client.release();
+    await pool.end();
+    
     console.log('Data initialization completed successfully!');
   } catch (error) {
     console.error('Error during data initialization:', error);

@@ -72,6 +72,27 @@ async function runMigration() {
       } else {
         console.log('total_earnings column already exists, skipping');
       }
+      
+      // Check if total_withdrawn column exists
+      const withdrawnColumnCheckResult = await client.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_schema = 'public' 
+          AND table_name = 'user_subscriptions' 
+          AND column_name = 'total_withdrawn'
+        );
+      `);
+
+      if (!withdrawnColumnCheckResult.rows[0].exists) {
+        console.log('Adding total_withdrawn column to user_subscriptions table');
+        await client.query(`
+          ALTER TABLE user_subscriptions 
+          ADD COLUMN total_withdrawn NUMERIC(10, 2) NOT NULL DEFAULT 0;
+        `);
+        console.log('total_withdrawn column added successfully');
+      } else {
+        console.log('total_withdrawn column already exists, skipping');
+      }
     } else {
       console.log('user_subscriptions table does not exist yet, skipping column additions');
     }
