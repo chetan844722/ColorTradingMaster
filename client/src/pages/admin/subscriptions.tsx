@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   PencilIcon, 
   PlusCircle, 
@@ -51,8 +52,10 @@ export default function AdminSubscriptions() {
     dailyReward: 0,
     totalReward: 0,
     duration: 7,
+    level: 1,
     features: [""],
-    isActive: true
+    isActive: true,
+    withdrawalWaitDays: 15
   });
   const { toast } = useToast();
 
@@ -117,8 +120,10 @@ export default function AdminSubscriptions() {
         dailyReward: 0,
         totalReward: 0,
         duration: 7,
+        level: 1,
         features: [""],
-        isActive: true
+        isActive: true,
+        withdrawalWaitDays: 15
       });
     },
     onError: (error: Error) => {
@@ -416,6 +421,35 @@ export default function AdminSubscriptions() {
                   placeholder="7"
                   value={isCreating ? form.duration : selectedSubscription?.duration || 7}
                   onChange={(e) => handleFormChange("duration", Number(e.target.value))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="level">Subscription Level</Label>
+                <Select
+                  value={String(isCreating ? form.level : selectedSubscription?.level || 1)}
+                  onValueChange={(value) => handleFormChange("level", Number(value))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Level 1 (Basic)</SelectItem>
+                    <SelectItem value="2">Level 2 (Premium)</SelectItem>
+                    <SelectItem value="3">Level 3 (VIP)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="withdrawalWaitDays">Withdrawal Waiting Period (Days)</Label>
+                <Input
+                  id="withdrawalWaitDays"
+                  type="number"
+                  placeholder="15"
+                  value={isCreating ? form.withdrawalWaitDays : selectedSubscription?.withdrawalWaitDays || 15}
+                  onChange={(e) => handleFormChange("withdrawalWaitDays", Number(e.target.value))}
                 />
               </div>
               <div className="space-y-2 flex items-end">

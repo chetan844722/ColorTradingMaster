@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { WebSocketServer, WebSocket } from "ws";
-import { addDays } from "date-fns";
+import { addDays, differenceInHours } from "date-fns";
 import {
   insertTransactionSchema,
   insertSubscriptionSchema,
@@ -151,15 +151,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type: z.enum(['deposit', 'withdrawal']),
         amount: z.number().positive(),
         description: z.string().optional(),
+        withdrawalSource: z.enum(['subscription', 'game_winnings']).optional(),
       });
       
       const validatedData = userTransactionSchema.parse(req.body);
       
-      // For withdrawal, check if user has enough balance
+      // For withdrawal, extra validation is needed
       if (validatedData.type === 'withdrawal') {
         const wallet = await storage.getWallet(req.user.id);
+        
+        // Check if user has enough balance
         if (!wallet || wallet.balance < validatedData.amount) {
           return res.status(400).json({ message: 'Insufficient balance' });
+        }
+        
+        // If withdrawing from subscription earnings, check the waiting period
+        if (validatedData.withdrawalSource === 'subscription' || !validatedData.withdrawalSource) {
+          // Get active subscription
+          const userSubscriptions = await storage.getUserSubscriptions(req.user.id);
+          const activeSubscription = userSubscriptions.find(sub => sub.isActive);
+          
+          if (!activeSubscription) {
+            return res.status(400).json({ message: 'No active subscription found. You need an active subscription to withdraw.' });
+          }
+          
+          // Check if withdrawal date has passed
+          if (activeSubscription.nextWithdrawalDate && new Date() < new Date(activeSubscription.nextWithdrawalDate)) {
+            return res.status(400).json({ 
+              message: `You cannot withdraw subscription earnings until ${new Date(activeSubscription.nextWithdrawalDate).toLocaleDateString()}. You must wait 15 days after purchasing a subscription.`
+            });
+          }
+          
+          // Check if total withdrawal amount exceeds subscription's total reward
+          const subscription = await storage.getSubscription(activeSubscription.subscriptionId);
+          if (!subscription) {
+            return res.status(400).json({ message: 'Subscription details not found' });
+          }
+          
+          if (activeSubscription.totalWithdrawn + validatedData.amount > subscription.totalReward) {
+            return res.status(400).json({ 
+              message: `You cannot withdraw more than ₹${subscription.totalReward} from this subscription. You have already withdrawn ₹${activeSubscription.totalWithdrawn}.`
+            });
+          }
+          
+          // Update the total withdrawn amount in user's subscription
+          await storage.updateUserSubscription(activeSubscription.id, {
+            totalWithdrawn: activeSubscription.totalWithdrawn + validatedData.amount
+          });
         }
       }
       
@@ -173,7 +211,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.user.id,
         type: validatedData.type,
         amount: amount,
-        description: validatedData.description || '',
+        description: validatedData.description || 
+          (validatedData.type === 'withdrawal' && validatedData.withdrawalSource 
+            ? `Withdrawal from ${validatedData.withdrawalSource}` 
+            : ''),
         status: 'pending' // All transactions start as pending and need admin approval
       });
       
@@ -207,8 +248,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/user/subscription', isAuthenticated, async (req, res) => {
     try {
       const userSubscriptions = await storage.getUserSubscriptions(req.user.id);
+      
+      // Check if there's an active subscription
+      const activeSubscription = userSubscriptions.find(sub => sub.isActive);
+      
+      if (activeSubscription) {
+        // Check if daily reward should be given
+        const now = new Date();
+        const lastRewardDate = activeSubscription.lastRewardDate 
+          ? new Date(activeSubscription.lastRewardDate) 
+          : null;
+        
+        // If last reward was given more than 24 hours ago or never given
+        if (!lastRewardDate || differenceInHours(now, lastRewardDate) >= 24) {
+          // Get subscription details to know reward amount
+          const subscription = await storage.getSubscription(activeSubscription.subscriptionId);
+          
+          if (subscription) {
+            // Add reward to user's wallet
+            await storage.updateWalletBalance(req.user.id, subscription.dailyReward);
+            
+            // Update last reward date and total earned
+            await storage.updateUserSubscription(activeSubscription.id, {
+              lastRewardDate: now,
+              totalEarned: activeSubscription.totalEarned + subscription.dailyReward
+            });
+            
+            // Create transaction record
+            await storage.createTransaction({
+              userId: req.user.id,
+              amount: subscription.dailyReward,
+              type: 'reward',
+              status: 'completed',
+              description: `Daily reward: ${subscription.name} subscription`
+            });
+            
+            // Send notification to user
+            sendToUser(req.user.id, {
+              type: 'daily_reward',
+              amount: subscription.dailyReward,
+              subscriptionName: subscription.name
+            });
+            
+            // Refresh user subscriptions after update
+            const updatedUserSubscriptions = await storage.getUserSubscriptions(req.user.id);
+            return res.json(updatedUserSubscriptions);
+          }
+        }
+      }
+      
       res.json(userSubscriptions);
     } catch (error) {
+      console.error('Error getting user subscriptions:', error);
       res.status(500).json({ message: 'Failed to get user subscriptions' });
     }
   });
@@ -238,32 +329,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Insufficient balance' });
       }
       
+      // Check user accumulated winnings - mandatory upgrade rule
+      // If user has won more than 30,000, they must purchase level 3 subscription (highest tier)
+      const bets = await storage.getGameBets(req.user.id);
+      const totalWinnings = bets.reduce((sum, bet) => sum + (bet.winAmount || 0), 0);
+      
+      if (totalWinnings >= 30000 && subscription.level < 3) {
+        return res.status(400).json({ 
+          message: 'You have earned more than ₹30,000 from games. You must purchase a Level 3 subscription.'
+        });
+      }
+      
       // Create user subscription
       const startDate = new Date();
       const endDate = addDays(startDate, subscription.duration);
+      
+      // Calculate next withdrawal date (default: 15 days from now, or custom from subscription)
+      const nextWithdrawalDate = addDays(startDate, subscription.withdrawalWaitDays);
       
       const userSubscription = await storage.createUserSubscription({
         userId: req.user.id,
         subscriptionId,
         startDate,
         endDate,
-        isActive: true
+        lastRewardDate: startDate, // First reward given at purchase
+        nextWithdrawalDate: nextWithdrawalDate,
+        isActive: true,
+        totalEarned: 0,
+        totalWithdrawn: 0,
+        accumulatedWinnings: totalWinnings // Record current winnings
       });
       
       // Deduct subscription price from wallet
       await storage.updateWalletBalance(req.user.id, -subscription.price);
       
-      // Create transaction record
+      // Add first daily reward immediately
+      await storage.updateWalletBalance(req.user.id, subscription.dailyReward);
+      
+      // Create transaction records
       await storage.createTransaction({
         userId: req.user.id,
         amount: -subscription.price,
         type: 'subscription',
         status: 'completed',
-        description: `Subscription purchase: ${subscription.name}`
+        description: `Subscription purchase: ${subscription.name} (Level ${subscription.level})`
+      });
+      
+      await storage.createTransaction({
+        userId: req.user.id,
+        amount: subscription.dailyReward,
+        type: 'reward',
+        status: 'completed',
+        description: `Daily reward: ${subscription.name} subscription`
       });
       
       res.status(201).json(userSubscription);
     } catch (error) {
+      console.error('Error purchasing subscription:', error);
       res.status(500).json({ message: 'Failed to purchase subscription' });
     }
   });

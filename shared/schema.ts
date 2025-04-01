@@ -62,8 +62,10 @@ export const subscriptions = pgTable("subscriptions", {
   dailyReward: real("daily_reward").notNull(),
   totalReward: real("total_reward").notNull(),
   duration: integer("duration").notNull(), // in days
+  level: integer("level").notNull().default(1), // Subscription level (1, 2, 3)
   features: text("features").array().notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  withdrawalWaitDays: integer("withdrawal_wait_days").notNull().default(15), // Days before withdrawal is allowed
 });
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptions).pick({
@@ -72,8 +74,10 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptions).pick({
   dailyReward: true,
   totalReward: true,
   duration: true,
+  level: true,
   features: true,
   isActive: true,
+  withdrawalWaitDays: true,
 });
 
 // User Subscription model
@@ -85,6 +89,12 @@ export const userSubscriptions = pgTable("user_subscriptions", {
   endDate: timestamp("end_date").notNull(),
   lastRewardDate: timestamp("last_reward_date"),
   isActive: boolean("is_active").notNull().default(true),
+  
+  // New fields for tracking rewards and earnings
+  totalEarned: real("total_earned").notNull().default(0), // Total earned from daily rewards
+  totalWithdrawn: real("total_withdrawn").notNull().default(0), // Total amount withdrawn
+  accumulatedWinnings: real("accumulated_winnings").notNull().default(0), // Total won from games
+  nextWithdrawalDate: timestamp("next_withdrawal_date"), // Date when withdrawal is allowed
 });
 
 export const insertUserSubscriptionSchema = createInsertSchema(userSubscriptions).pick({
@@ -93,6 +103,11 @@ export const insertUserSubscriptionSchema = createInsertSchema(userSubscriptions
   startDate: true,
   endDate: true,
   isActive: true,
+  lastRewardDate: true,
+  totalEarned: true,
+  totalWithdrawn: true,
+  accumulatedWinnings: true,
+  nextWithdrawalDate: true,
 });
 
 // Game model
