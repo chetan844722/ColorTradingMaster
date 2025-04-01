@@ -143,17 +143,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post('/api/user/transaction', isAuthenticated, async (req, res) => {
+    if (!req.user) return res.status(401).send();
+    
     try {
-      const validatedData = insertTransactionSchema.parse(req.body);
+      // Create a more focused schema for user transaction creation
+      const userTransactionSchema = z.object({
+        type: z.enum(['deposit', 'withdrawal']),
+        amount: z.number().positive(),
+        description: z.string().optional(),
+      });
       
-      // Only allow user to create deposit transactions
-      if (validatedData.type !== 'deposit') {
-        return res.status(400).json({ message: 'Only deposit transactions can be created' });
+      const validatedData = userTransactionSchema.parse(req.body);
+      
+      // For withdrawal, check if user has enough balance
+      if (validatedData.type === 'withdrawal') {
+        const wallet = await storage.getWallet(req.user.id);
+        if (!wallet || wallet.balance < validatedData.amount) {
+          return res.status(400).json({ message: 'Insufficient balance' });
+        }
       }
       
+      // Calculate the actual amount (positive for deposit, negative for withdrawal)
+      const amount = validatedData.type === 'deposit' 
+        ? Math.abs(validatedData.amount) 
+        : -Math.abs(validatedData.amount);
+      
+      // Create the transaction with 'pending' status
       const transaction = await storage.createTransaction({
-        ...validatedData,
-        userId: req.user.id
+        userId: req.user.id,
+        type: validatedData.type,
+        amount: amount,
+        description: validatedData.description || '',
+        status: 'pending' // All transactions start as pending and need admin approval
+      });
+      
+      // Send notification to admin dashboard
+      broadcastToAll({
+        type: 'new_transaction',
+        transaction
       });
       
       res.status(201).json(transaction);
@@ -161,6 +188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         res.status(400).json({ message: 'Invalid input data', errors: error.errors });
       } else {
+        console.error('Error creating transaction:', error);
         res.status(500).json({ message: 'Failed to create transaction' });
       }
     }
@@ -533,18 +561,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin routes
   app.get('/api/admin/users', isAdmin, async (req, res) => {
     try {
-      const allUsers = await db.select().from(users);
+      // Use storage interface instead of direct db access
+      const allUsers = await storage.getAllUsers();
       res.json(allUsers);
     } catch (error) {
+      console.error('Error getting users:', error);
       res.status(500).json({ message: 'Failed to get users' });
     }
   });
 
   app.get('/api/admin/transactions', isAdmin, async (req, res) => {
     try {
-      const allTransactions = await db.select().from(transactions);
+      // Use storage interface instead of direct db access
+      const allTransactions = await storage.getAllTransactions();
       res.json(allTransactions);
     } catch (error) {
+      console.error('Error getting transactions:', error);
       res.status(500).json({ message: 'Failed to get transactions' });
     }
   });

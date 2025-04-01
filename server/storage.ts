@@ -22,6 +22,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, user: Partial<User>): Promise<User>;
+  getAllUsers(): Promise<User[]>; // Added for admin dashboard
   
   // Wallet methods
   getWallet(userId: number): Promise<Wallet | undefined>;
@@ -32,6 +33,7 @@ export interface IStorage {
   getTransactions(userId: number): Promise<Transaction[]>;
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   updateTransactionStatus(id: number, status: string): Promise<Transaction>;
+  getAllTransactions(): Promise<Transaction[]>; // Added for admin dashboard
   
   // Subscription methods
   getSubscriptions(): Promise<Subscription[]>;
@@ -43,11 +45,13 @@ export interface IStorage {
   getUserSubscriptions(userId: number): Promise<UserSubscription[]>;
   createUserSubscription(userSubscription: InsertUserSubscription): Promise<UserSubscription>;
   updateUserSubscription(id: number, userSubscription: Partial<UserSubscription>): Promise<UserSubscription>;
+  getAllUserSubscriptions(): Promise<UserSubscription[]>; // Added for admin dashboard
   
   // Game methods
   getGames(): Promise<Game[]>;
   getGame(id: number): Promise<Game | undefined>;
   createGame(game: InsertGame): Promise<Game>;
+  updateGame(id: number, game: Partial<Game>): Promise<Game>; // Added for game activation toggle
   
   // Game Round methods
   getGameRounds(gameId: number): Promise<GameRound[]>;
@@ -110,6 +114,10 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return updatedUser;
   }
+  
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(users);
+  }
 
   // Wallet methods
   async getWallet(userId: number): Promise<Wallet | undefined> {
@@ -158,6 +166,10 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return updatedTransaction;
+  }
+  
+  async getAllTransactions(): Promise<Transaction[]> {
+    return db.select().from(transactions);
   }
 
   // Subscription methods
@@ -219,6 +231,10 @@ export class DatabaseStorage implements IStorage {
     
     return updatedUserSubscription;
   }
+  
+  async getAllUserSubscriptions(): Promise<UserSubscription[]> {
+    return db.select().from(userSubscriptions);
+  }
 
   // Game methods
   async getGames(): Promise<Game[]> {
@@ -233,6 +249,16 @@ export class DatabaseStorage implements IStorage {
   async createGame(game: InsertGame): Promise<Game> {
     const [newGame] = await db.insert(games).values(game).returning();
     return newGame;
+  }
+  
+  async updateGame(id: number, game: Partial<Game>): Promise<Game> {
+    const [updatedGame] = await db
+      .update(games)
+      .set(game)
+      .where(eq(games.id, id))
+      .returning();
+    
+    return updatedGame;
   }
 
   // Game Round methods
