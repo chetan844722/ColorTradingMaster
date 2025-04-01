@@ -97,7 +97,7 @@ export default function AdminTransactions() {
   });
 
   const getUserName = (userId: number) => {
-    const user = users.find(u => u.id === userId);
+    const user = users.find((u: { id: number; username: string }) => u.id === userId);
     return user ? user.username : `User #${userId}`;
   };
 

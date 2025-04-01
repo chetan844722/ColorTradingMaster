@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -13,6 +13,7 @@ import { Wallet, Transaction } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useWebSocket } from "@/hooks/use-websocket";
 import { 
   ArrowDownToLine, 
   ArrowUpFromLine, 
@@ -108,6 +109,32 @@ export default function WalletCard(props: WalletCardProps) {
     },
   });
   
+  // Handle WebSocket messages
+  const handleWebSocketMessage = useCallback((data: any) => {
+    if (data.type === 'transaction_approved') {
+      toast({
+        title: "Transaction Approved",
+        description: `Your deposit of ₹${data.amount} has been approved!`,
+        variant: "default",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/transactions"] });
+    } else if (data.type === 'withdrawal_approved') {
+      toast({
+        title: "Withdrawal Approved",
+        description: `Your withdrawal of ₹${data.amount} has been approved!`,
+        variant: "default",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/transactions"] });
+    }
+  }, [toast]);
+  
+  // Setup WebSocket connection
+  const { status } = useWebSocket({
+    onMessage: handleWebSocketMessage
+  });
+  
   // Use either passed props or fetched data
   const wallet = props.wallet || fetchedWallet;
   const transactions = props.transactions || fetchedTransactions || [];
@@ -175,6 +202,15 @@ export default function WalletCard(props: WalletCardProps) {
                 <CreditCard className="h-3 w-3 mr-1" />
                 <span>Wallet</span>
               </div>
+              
+              {pendingTransactions.length > 0 && (
+                <div className="bg-yellow-500/20 text-yellow-200 text-xs rounded-full px-2 py-0.5 flex items-center ml-2">
+                  <Clock className="h-3 w-3 mr-1" />
+                  <span>₹{pendingTransactions.reduce((sum, tx) => 
+                    tx.type === 'deposit' ? sum + tx.amount : sum, 0
+                  ).toFixed(2)} pending</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

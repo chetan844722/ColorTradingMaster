@@ -204,7 +204,7 @@ export default function AdminSubscriptions() {
   const getActiveUsersCount = (subscriptionId: number) => {
     return userSubscriptions.filter(us => 
       us.subscriptionId === subscriptionId && 
-      new Date(us.expiresAt) > new Date()
+      us.isActive && new Date(us.endDate) > new Date()
     ).length;
   };
 

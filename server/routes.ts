@@ -549,7 +549,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/transactions/:id', isAdmin, async (req, res) => {
+  app.patch('/api/admin/transactions/:id', isAdmin, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const { status } = req.body;
