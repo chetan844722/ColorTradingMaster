@@ -48,11 +48,11 @@ export default function AdminSubscriptions() {
   const [form, setForm] = useState({
     name: "",
     price: 0,
-    daily_reward: 0,
-    total_reward: 0,
+    dailyReward: 0,
+    totalReward: 0,
     duration: 7,
     features: [""],
-    is_active: true
+    isActive: true
   });
   const { toast } = useToast();
 
@@ -114,11 +114,11 @@ export default function AdminSubscriptions() {
       setForm({
         name: "",
         price: 0,
-        daily_reward: 0,
-        total_reward: 0,
+        dailyReward: 0,
+        totalReward: 0,
         duration: 7,
         features: [""],
-        is_active: true
+        isActive: true
       });
     },
     onError: (error: Error) => {
@@ -221,7 +221,7 @@ export default function AdminSubscriptions() {
   const toggleSubscriptionStatus = (subscription: Subscription) => {
     updateSubscriptionMutation.mutate({
       id: subscription.id,
-      is_active: !subscription.is_active
+      isActive: !subscription.isActive
     });
   };
 
@@ -267,13 +267,13 @@ export default function AdminSubscriptions() {
                       <TableRow key={subscription.id}>
                         <TableCell className="font-medium">{subscription.name}</TableCell>
                         <TableCell>{subscription.price}</TableCell>
-                        <TableCell>{subscription.daily_reward}</TableCell>
-                        <TableCell>{subscription.total_reward}</TableCell>
+                        <TableCell>{subscription.dailyReward}</TableCell>
+                        <TableCell>{subscription.totalReward}</TableCell>
                         <TableCell>{subscription.duration}</TableCell>
                         <TableCell>{getActiveUsersCount(subscription.id)}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
-                            {subscription.is_active ? (
+                            {subscription.isActive ? (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
                                 Active
                               </span>
@@ -291,7 +291,7 @@ export default function AdminSubscriptions() {
                               size="icon"
                               onClick={() => toggleSubscriptionStatus(subscription)}
                             >
-                              {subscription.is_active ? (
+                              {subscription.isActive ? (
                                 <ToggleRight className="h-4 w-4 text-green-500" />
                               ) : (
                                 <ToggleLeft className="h-4 w-4 text-gray-500" />
@@ -386,23 +386,23 @@ export default function AdminSubscriptions() {
             
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="daily_reward">Daily Reward (₹)</Label>
+                <Label htmlFor="dailyReward">Daily Reward (₹)</Label>
                 <Input
-                  id="daily_reward"
+                  id="dailyReward"
                   type="number"
                   placeholder="600"
-                  value={isCreating ? form.daily_reward : selectedSubscription?.daily_reward || 0}
-                  onChange={(e) => handleFormChange("daily_reward", Number(e.target.value))}
+                  value={isCreating ? form.dailyReward : selectedSubscription?.dailyReward || 0}
+                  onChange={(e) => handleFormChange("dailyReward", Number(e.target.value))}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="total_reward">Total Reward (₹)</Label>
+                <Label htmlFor="totalReward">Total Reward (₹)</Label>
                 <Input
-                  id="total_reward"
+                  id="totalReward"
                   type="number"
                   placeholder="4200"
-                  value={isCreating ? form.total_reward : selectedSubscription?.total_reward || 0}
-                  onChange={(e) => handleFormChange("total_reward", Number(e.target.value))}
+                  value={isCreating ? form.totalReward : selectedSubscription?.totalReward || 0}
+                  onChange={(e) => handleFormChange("totalReward", Number(e.target.value))}
                 />
               </div>
             </div>
@@ -421,11 +421,11 @@ export default function AdminSubscriptions() {
               <div className="space-y-2 flex items-end">
                 <div className="flex items-center space-x-2">
                   <Switch
-                    id="is_active"
-                    checked={isCreating ? form.is_active : selectedSubscription?.is_active || false}
-                    onCheckedChange={(checked) => handleFormChange("is_active", checked)}
+                    id="isActive"
+                    checked={isCreating ? form.isActive : selectedSubscription?.isActive || false}
+                    onCheckedChange={(checked) => handleFormChange("isActive", checked)}
                   />
-                  <Label htmlFor="is_active">Active</Label>
+                  <Label htmlFor="isActive">Active</Label>
                 </div>
               </div>
             </div>
