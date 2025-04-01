@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, real, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, real, primaryKey, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -210,6 +210,82 @@ export const insertAdminSettingSchema = createInsertSchema(adminSettings).pick({
   value: true,
 });
 
+// Login attempts for security tracking
+export const loginAttempts = pgTable("login_attempts", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull(),
+  ipAddress: text("ip_address").notNull(),
+  userAgent: text("user_agent"),
+  success: boolean("success").notNull(),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  geoLocation: jsonb("geo_location"), // Store country, city, etc.
+});
+
+export const insertLoginAttemptSchema = createInsertSchema(loginAttempts).pick({
+  username: true,
+  ipAddress: true,
+  userAgent: true,
+  success: true,
+  geoLocation: true,
+});
+
+// User sessions for tracking active users
+export const userSessions = pgTable("user_sessions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  sessionId: text("session_id").notNull(),
+  ipAddress: text("ip_address").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastActiveAt: timestamp("last_active_at").notNull().defaultNow(),
+  geoLocation: jsonb("geo_location"), // Store country, city, etc.
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const insertUserSessionSchema = createInsertSchema(userSessions).pick({
+  userId: true,
+  sessionId: true,
+  ipAddress: true,
+  userAgent: true,
+  geoLocation: true,
+});
+
+// Security alerts for fraud detection
+export const securityAlerts = pgTable("security_alerts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  type: text("type").notNull(), // login_attempt, suspicious_bet, large_withdrawal, etc.
+  severity: text("severity").notNull(), // low, medium, high
+  description: text("description").notNull(),
+  metadata: jsonb("metadata"), // Additional details about the alert
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  isResolved: boolean("is_resolved").notNull().default(false),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: integer("resolved_by").references(() => users.id),
+  resolution: text("resolution"),
+});
+
+export const insertSecurityAlertSchema = createInsertSchema(securityAlerts).pick({
+  userId: true,
+  type: true,
+  severity: true,
+  description: true,
+  metadata: true,
+  ipAddress: true,
+});
+
+// Rate limiting to prevent abuse
+export const rateLimits = pgTable("rate_limits", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull(), // The resource being limited (IP, user ID, endpoint)
+  endpoint: text("endpoint").notNull(), // The API endpoint being accessed
+  count: integer("count").notNull().default(1), // Number of requests
+  firstRequest: timestamp("first_request").notNull().defaultNow(),
+  lastRequest: timestamp("last_request").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(), // When this rate limit record expires
+});
+
 // Composite types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -243,3 +319,14 @@ export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 
 export type AdminSetting = typeof adminSettings.$inferSelect;
 export type InsertAdminSetting = z.infer<typeof insertAdminSettingSchema>;
+
+export type LoginAttempt = typeof loginAttempts.$inferSelect;
+export type InsertLoginAttempt = z.infer<typeof insertLoginAttemptSchema>;
+
+export type UserSession = typeof userSessions.$inferSelect;
+export type InsertUserSession = z.infer<typeof insertUserSessionSchema>;
+
+export type SecurityAlert = typeof securityAlerts.$inferSelect;
+export type InsertSecurityAlert = z.infer<typeof insertSecurityAlertSchema>;
+
+export type RateLimit = typeof rateLimits.$inferSelect;

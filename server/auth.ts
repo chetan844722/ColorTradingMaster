@@ -1,15 +1,27 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Express } from "express";
+import { Express, Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User } from "@shared/schema";
+import { rateLimiter, trackLoginAttempt, trackUserSession, MAX_LOGIN_ATTEMPTS, LOGIN_ATTEMPT_WINDOW_MINUTES } from "./middlewares/security";
 
+// Fix TypeScript declaration for Express.User
 declare global {
   namespace Express {
-    interface User extends User {}
+    // Define the User interface properly with explicit type matching our DB schema
+    interface User {
+      id: number;
+      username: string;
+      password: string;
+      fullName: string;
+      phone: string | null;
+      email: string | null;
+      role: string;
+      createdAt: Date;
+    }
   }
 }
 
@@ -28,6 +40,76 @@ async function comparePasswords(supplied: string, stored: string) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
+/**
+ * Check recent failed login attempts before allowing login
+ */
+async function loginSecurityCheck(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { username } = req.body;
+    
+    if (!username) {
+      return res.status(400).json({ message: "Username is required" });
+    }
+    
+    // Check for excessive failed login attempts
+    const failedAttempts = await storage.getRecentFailedLoginAttempts(
+      username, 
+      LOGIN_ATTEMPT_WINDOW_MINUTES
+    );
+    
+    if (failedAttempts >= MAX_LOGIN_ATTEMPTS) {
+      // Track this attempt as well
+      await trackLoginAttempt(username, false, req);
+      
+      return res.status(429).json({
+        message: "Too many failed login attempts. Please try again later.",
+        retryAfter: LOGIN_ATTEMPT_WINDOW_MINUTES * 60 // seconds
+      });
+    }
+    
+    next();
+  } catch (error) {
+    console.error("Login security check error:", error);
+    next(); // Continue in case of error to avoid blocking legitimate login attempts
+  }
+}
+
+/**
+ * Custom authentication handler with login attempt tracking
+ */
+function authenticateWithTracking(req: Request, res: Response, next: NextFunction) {
+  const { username } = req.body;
+  
+  // Use custom callback to track login attempts
+  // @ts-ignore - Types for passport.authenticate callback are difficult to specify correctly
+  passport.authenticate('local', async (err: any, user: Express.User | false, info: any) => {
+    // Track login attempt (success or failure)
+    await trackLoginAttempt(username, !!user, req);
+    
+    if (err) {
+      return next(err);
+    }
+    
+    if (!user) {
+      return res.status(401).json({ message: "Invalid username or password" });
+    }
+    
+    // Track successful login session for the user
+    req.login(user, async (err) => {
+      if (err) {
+        return next(err);
+      }
+      
+      // Track user session for the successful login
+      if (req.sessionID) {
+        await trackUserSession(user.id, req.sessionID, req);
+      }
+      
+      return res.status(200).json(user);
+    });
+  })(req, res, next);
+}
+
 export function setupAuth(app: Express) {
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "colortrade-session-secret",
@@ -37,6 +119,7 @@ export function setupAuth(app: Express) {
     cookie: {
       secure: process.env.NODE_ENV === "production",
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      sameSite: 'lax' // Improves CSRF protection
     }
   };
 
@@ -44,6 +127,9 @@ export function setupAuth(app: Express) {
   app.use(session(sessionSettings));
   app.use(passport.initialize());
   app.use(passport.session());
+  
+  // Apply rate limiter to all routes
+  app.use(rateLimiter);
 
   passport.use(
     new LocalStrategy(async (username, password, done) => {
@@ -60,7 +146,11 @@ export function setupAuth(app: Express) {
     }),
   );
 
-  passport.serializeUser((user, done) => done(null, user.id));
+  // Type the user parameter correctly
+  passport.serializeUser((user: Express.User, done) => {
+    done(null, user.id);
+  });
+  
   passport.deserializeUser(async (id: number, done) => {
     try {
       const user = await storage.getUser(id);
@@ -75,10 +165,10 @@ export function setupAuth(app: Express) {
       // Validate input
       const existingUser = await storage.getUserByUsername(req.body.username);
       if (existingUser) {
-        return res.status(400).send("Username already exists");
+        return res.status(400).json({ message: "Username already exists" });
       }
 
-      // Create new user
+      // Create new user with hashed password
       const user = await storage.createUser({
         ...req.body,
         password: await hashPassword(req.body.password),
@@ -88,8 +178,14 @@ export function setupAuth(app: Express) {
       await storage.createWallet({ userId: user.id, balance: 0 });
 
       // Login the user
-      req.login(user, (err) => {
+      req.login(user, async (err) => {
         if (err) return next(err);
+        
+        // Track user session for the successful registration
+        if (req.sessionID) {
+          await trackUserSession(user.id, req.sessionID, req);
+        }
+        
         res.status(201).json(user);
       });
     } catch (error) {
@@ -97,11 +193,16 @@ export function setupAuth(app: Express) {
     }
   });
 
-  app.post("/api/login", passport.authenticate("local"), (req, res) => {
-    res.status(200).json(req.user);
-  });
+  // Enhanced login endpoint with security checks
+  app.post("/api/login", loginSecurityCheck, authenticateWithTracking);
 
   app.post("/api/logout", (req, res, next) => {
+    // Deactivate the session in our tracking
+    if (req.sessionID && req.user) {
+      storage.deactivateUserSession(req.sessionID)
+        .catch(err => console.error("Error deactivating user session:", err));
+    }
+    
     req.logout((err) => {
       if (err) return next(err);
       res.sendStatus(200);

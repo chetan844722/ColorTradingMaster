@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { WebSocketServer, WebSocket } from "ws";
 import { addDays, differenceInHours } from "date-fns";
+import { detectSuspiciousTransaction, detectAutomatedBetting } from "./middlewares/security";
 import {
   insertTransactionSchema,
   insertSubscriptionSchema,
@@ -23,7 +24,7 @@ const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
 
 // Middleware to check if user is admin
 const isAdmin = (req: Request, res: Response, next: NextFunction) => {
-  if (req.isAuthenticated() && req.user.role === "admin") {
+  if (req.isAuthenticated() && req.user && req.user.role === "admin") {
     return next();
   }
   res.status(403).json({ message: "Forbidden" });
@@ -39,12 +40,12 @@ function generateReferralCode(length = 8) {
   return code;
 }
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express, existingServer?: Server): Promise<Server> {
   // Auth routes
   setupAuth(app);
 
-  // Create HTTP server
-  const httpServer = createServer(app);
+  // Use existing server if provided or create a new one
+  const httpServer = existingServer || createServer(app);
 
   // Create WebSocket server
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
@@ -126,6 +127,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User routes
   app.get('/api/user/wallet', isAuthenticated, async (req, res) => {
     try {
+      // TypeScript requires this check even though isAuthenticated middleware guarantees req.user exists
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      
       const wallet = await storage.getWallet(req.user.id);
       res.json(wallet);
     } catch (error) {
@@ -135,6 +139,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/user/transactions', isAuthenticated, async (req, res) => {
     try {
+      // TypeScript requires this check even though isAuthenticated middleware guarantees req.user exists
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      
       const transactions = await storage.getTransactions(req.user.id);
       res.json(transactions);
     } catch (error) {
@@ -218,6 +225,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: 'pending' // All transactions start as pending and need admin approval
       });
       
+      // Check for suspicious transaction patterns
+      await detectSuspiciousTransaction(
+        req.user.id,
+        amount,
+        validatedData.type
+      );
+      
       // Send notification to admin dashboard
       broadcastToAll({
         type: 'new_transaction',
@@ -247,6 +261,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/user/subscription', isAuthenticated, async (req, res) => {
     try {
+      // TypeScript requires this check even though isAuthenticated middleware guarantees req.user exists
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      
       const userSubscriptions = await storage.getUserSubscriptions(req.user.id);
       
       // Check if there's an active subscription
@@ -306,6 +323,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/user/subscription', isAuthenticated, async (req, res) => {
     try {
+      // TypeScript requires this check even though isAuthenticated middleware guarantees req.user exists
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      
       const { subscriptionId } = req.body;
       
       if (!subscriptionId) {
@@ -446,6 +466,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/game-rounds/:id/bet', isAuthenticated, async (req, res) => {
     try {
+      // TypeScript requires this check even though isAuthenticated middleware guarantees req.user exists
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      
       const roundId = parseInt(req.params.id);
       const validatedData = insertGameBetSchema.parse({
         ...req.body,
@@ -478,6 +501,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Create bet
       const bet = await storage.createGameBet(validatedData);
+      
+      // Check for automated betting patterns
+      await detectAutomatedBetting(req.user.id, roundId);
       
       res.status(201).json(bet);
     } catch (error) {
@@ -589,6 +615,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User bets route
   app.get('/api/user/bets', isAuthenticated, async (req, res) => {
     try {
+      // TypeScript requires this check even though isAuthenticated middleware guarantees req.user exists
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      
       const { roundId } = req.query;
       let bets;
       
@@ -609,6 +638,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Referral routes
   app.get('/api/user/referrals', isAuthenticated, async (req, res) => {
     try {
+      // TypeScript requires this check even though isAuthenticated middleware guarantees req.user exists
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      
       const referrals = await storage.getReferrals(req.user.id);
       res.json(referrals);
     } catch (error) {
@@ -618,6 +650,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/user/refer', isAuthenticated, async (req, res) => {
     try {
+      // TypeScript requires this check even though isAuthenticated middleware guarantees req.user exists
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      
       const { referredUserId } = req.body;
       
       if (!referredUserId) {
@@ -649,6 +684,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/chat/messages', isAuthenticated, async (req, res) => {
     try {
+      // TypeScript requires this check even though isAuthenticated middleware guarantees req.user exists
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      
       const validatedData = insertChatMessageSchema.parse({
         ...req.body,
         userId: req.user.id
@@ -658,17 +696,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Broadcast message to all users
       const user = await storage.getUser(req.user.id);
-      broadcastToAll({
-        type: 'chat',
-        message: {
-          id: message.id,
-          userId: message.userId,
-          username: user.username,
-          fullName: user.fullName,
-          message: message.message,
-          createdAt: message.createdAt
-        }
-      });
+      if (user) {
+        broadcastToAll({
+          type: 'chat',
+          message: {
+            id: message.id,
+            userId: message.userId,
+            username: user.username,
+            fullName: user.fullName,
+            message: message.message,
+            createdAt: message.createdAt
+          }
+        });
+      }
       
       res.status(201).json(message);
     } catch (error) {
@@ -830,6 +870,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(setting);
     } catch (error) {
       res.status(500).json({ message: 'Failed to update setting' });
+    }
+  });
+
+  // Health check endpoint for deployment platforms
+  app.get('/api/health', (req, res) => {
+    res.status(200).json({
+      status: 'healthy',
+      version: process.env.npm_package_version || '1.0.0',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      uptime: process.uptime()
+    });
+  });
+
+  // Daily rewards cron endpoint for scheduled jobs
+  app.get('/api/cron/daily-rewards', async (req, res) => {
+    try {
+      // Get all active subscriptions
+      const allUserSubscriptions = await storage.getAllUserSubscriptions();
+      const activeSubscriptions = allUserSubscriptions.filter(sub => sub.isActive);
+      
+      let processed = 0;
+      let errors = 0;
+      
+      // Process each active subscription
+      for (const subscription of activeSubscriptions) {
+        try {
+          const now = new Date();
+          const lastRewardDate = subscription.lastRewardDate 
+            ? new Date(subscription.lastRewardDate) 
+            : null;
+          
+          // If last reward was given more than 24 hours ago
+          if (lastRewardDate && differenceInHours(now, lastRewardDate) >= 24) {
+            // Get subscription details to know reward amount
+            const subscriptionDetails = await storage.getSubscription(subscription.subscriptionId);
+            
+            if (subscriptionDetails) {
+              // Add reward to user's wallet
+              await storage.updateWalletBalance(subscription.userId, subscriptionDetails.dailyReward);
+              
+              // Update last reward date and total earned
+              await storage.updateUserSubscription(subscription.id, {
+                lastRewardDate: now,
+                totalEarned: subscription.totalEarned + subscriptionDetails.dailyReward
+              });
+              
+              // Create transaction record
+              await storage.createTransaction({
+                userId: subscription.userId,
+                amount: subscriptionDetails.dailyReward,
+                type: 'reward',
+                status: 'completed',
+                description: `Daily reward: ${subscriptionDetails.name} subscription`
+              });
+              
+              // Send notification via WebSocket if user is online
+              sendToUser(subscription.userId, {
+                type: 'daily_reward',
+                amount: subscriptionDetails.dailyReward,
+                subscriptionName: subscriptionDetails.name
+              });
+              
+              processed++;
+            }
+          }
+        } catch (error) {
+          console.error(`Error processing daily reward for subscription ${subscription.id}:`, error);
+          errors++;
+        }
+      }
+      
+      res.status(200).json({
+        success: true,
+        processed,
+        errors,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error in daily rewards cron job:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to process daily rewards',
+        timestamp: new Date().toISOString()
+      });
     }
   });
 

@@ -1,15 +1,18 @@
 import { 
   users, wallets, transactions, subscriptions, userSubscriptions,
   games, gameRounds, gameBets, referrals, chatMessages, adminSettings,
+  loginAttempts, userSessions, securityAlerts, rateLimits,
   type User, type InsertUser, type Wallet, type InsertWallet,
   type Transaction, type InsertTransaction, type Subscription, type InsertSubscription,
   type UserSubscription, type InsertUserSubscription,
   type Game, type InsertGame, type GameRound, type InsertGameRound,
   type GameBet, type InsertGameBet, type Referral, type InsertReferral,
-  type ChatMessage, type InsertChatMessage, type AdminSetting, type InsertAdminSetting
+  type ChatMessage, type InsertChatMessage, type AdminSetting, type InsertAdminSetting,
+  type LoginAttempt, type InsertLoginAttempt, type UserSession, type InsertUserSession,
+  type SecurityAlert, type InsertSecurityAlert, type RateLimit
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, lt, desc, or, sql, SQL } from "drizzle-orm";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 
@@ -76,6 +79,27 @@ export interface IStorage {
   getAdminSetting(key: string): Promise<AdminSetting | undefined>;
   updateAdminSetting(key: string, value: string): Promise<AdminSetting>;
 
+  // Security methods - Login Attempts
+  getLoginAttempts(username: string, limit?: number): Promise<LoginAttempt[]>;
+  createLoginAttempt(loginAttempt: InsertLoginAttempt): Promise<LoginAttempt>;
+  getRecentFailedLoginAttempts(username: string, minutes: number): Promise<number>;
+  
+  // Security methods - User Sessions
+  getUserSessions(userId: number): Promise<UserSession[]>;
+  createUserSession(userSession: InsertUserSession): Promise<UserSession>;
+  updateUserSession(sessionId: string, updates: Partial<UserSession>): Promise<UserSession | undefined>;
+  deactivateUserSession(sessionId: string): Promise<UserSession | undefined>;
+  
+  // Security methods - Security Alerts
+  getSecurityAlerts(userId?: number, resolved?: boolean): Promise<SecurityAlert[]>;
+  createSecurityAlert(alert: InsertSecurityAlert): Promise<SecurityAlert>;
+  resolveSecurityAlert(id: number, resolvedBy: number, resolution: string): Promise<SecurityAlert>;
+  
+  // Security methods - Rate Limiting
+  getRateLimit(key: string, endpoint: string): Promise<RateLimit | undefined>;
+  createOrUpdateRateLimit(key: string, endpoint: string, expiresAt: Date): Promise<RateLimit>;
+  cleanupExpiredRateLimits(): Promise<void>;
+  
   // Session store
   sessionStore: any; // Using any to avoid type issues with session store
 }
@@ -359,6 +383,173 @@ export class DatabaseStorage implements IStorage {
       
       return newSetting;
     }
+  }
+
+  // Security Methods - Login Attempts
+  async getLoginAttempts(username: string, limit: number = 10): Promise<LoginAttempt[]> {
+    return db.select()
+      .from(loginAttempts)
+      .where(eq(loginAttempts.username, username))
+      .orderBy(desc(loginAttempts.timestamp))
+      .limit(limit);
+  }
+
+  async createLoginAttempt(loginAttempt: InsertLoginAttempt): Promise<LoginAttempt> {
+    const [newLoginAttempt] = await db.insert(loginAttempts).values(loginAttempt).returning();
+    return newLoginAttempt;
+  }
+
+  async getRecentFailedLoginAttempts(username: string, minutes: number): Promise<number> {
+    const timeThreshold = new Date();
+    timeThreshold.setMinutes(timeThreshold.getMinutes() - minutes);
+
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(loginAttempts)
+      .where(
+        and(
+          eq(loginAttempts.username, username),
+          eq(loginAttempts.success, false),
+          gte(loginAttempts.timestamp, timeThreshold)
+        )
+      );
+
+    return result[0].count;
+  }
+
+  // Security Methods - User Sessions
+  async getUserSessions(userId: number): Promise<UserSession[]> {
+    return db.select()
+      .from(userSessions)
+      .where(eq(userSessions.userId, userId))
+      .orderBy(desc(userSessions.lastActiveAt));
+  }
+
+  async createUserSession(userSession: InsertUserSession): Promise<UserSession> {
+    const [newUserSession] = await db.insert(userSessions).values(userSession).returning();
+    return newUserSession;
+  }
+
+  async updateUserSession(sessionId: string, updates: Partial<UserSession>): Promise<UserSession | undefined> {
+    const [updatedSession] = await db
+      .update(userSessions)
+      .set({
+        ...updates,
+        lastActiveAt: new Date()
+      })
+      .where(eq(userSessions.sessionId, sessionId))
+      .returning();
+    
+    return updatedSession;
+  }
+
+  async deactivateUserSession(sessionId: string): Promise<UserSession | undefined> {
+    const [updatedSession] = await db
+      .update(userSessions)
+      .set({
+        isActive: false,
+        lastActiveAt: new Date()
+      })
+      .where(eq(userSessions.sessionId, sessionId))
+      .returning();
+    
+    return updatedSession;
+  }
+
+  // Security Methods - Security Alerts
+  async getSecurityAlerts(userId?: number, resolved?: boolean): Promise<SecurityAlert[]> {
+    let conditions = [];
+    
+    if (userId !== undefined) {
+      conditions.push(eq(securityAlerts.userId, userId));
+    }
+    
+    if (resolved !== undefined) {
+      conditions.push(eq(securityAlerts.isResolved, resolved));
+    }
+    
+    // If we have conditions, apply them with AND
+    if (conditions.length > 0) {
+      return db.select()
+        .from(securityAlerts)
+        .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+        .orderBy(desc(securityAlerts.createdAt));
+    } else {
+      // No conditions, just return all alerts
+      return db.select()
+        .from(securityAlerts)
+        .orderBy(desc(securityAlerts.createdAt));
+    }
+  }
+
+  async createSecurityAlert(alert: InsertSecurityAlert): Promise<SecurityAlert> {
+    const [newAlert] = await db.insert(securityAlerts).values(alert).returning();
+    return newAlert;
+  }
+
+  async resolveSecurityAlert(id: number, resolvedBy: number, resolution: string): Promise<SecurityAlert> {
+    const [updatedAlert] = await db
+      .update(securityAlerts)
+      .set({
+        isResolved: true,
+        resolvedAt: new Date(),
+        resolvedBy,
+        resolution
+      })
+      .where(eq(securityAlerts.id, id))
+      .returning();
+    
+    return updatedAlert;
+  }
+
+  // Security Methods - Rate Limiting
+  async getRateLimit(key: string, endpoint: string): Promise<RateLimit | undefined> {
+    const [rateLimit] = await db.select()
+      .from(rateLimits)
+      .where(
+        and(
+          eq(rateLimits.key, key),
+          eq(rateLimits.endpoint, endpoint),
+          gte(rateLimits.expiresAt, new Date())
+        )
+      );
+    
+    return rateLimit;
+  }
+
+  async createOrUpdateRateLimit(key: string, endpoint: string, expiresAt: Date): Promise<RateLimit> {
+    const existingLimit = await this.getRateLimit(key, endpoint);
+    
+    if (existingLimit) {
+      const [updatedLimit] = await db
+        .update(rateLimits)
+        .set({
+          count: existingLimit.count + 1,
+          lastRequest: new Date(),
+          expiresAt
+        })
+        .where(eq(rateLimits.id, existingLimit.id))
+        .returning();
+      
+      return updatedLimit;
+    } else {
+      const [newLimit] = await db
+        .insert(rateLimits)
+        .values({
+          key,
+          endpoint,
+          count: 1,
+          firstRequest: new Date(),
+          lastRequest: new Date(),
+          expiresAt
+        })
+        .returning();
+      
+      return newLimit;
+    }
+  }
+
+  async cleanupExpiredRateLimits(): Promise<void> {
+    await db.delete(rateLimits).where(lt(rateLimits.expiresAt, new Date()));
   }
 }
 

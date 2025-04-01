@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # Application service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production # Use the production stage from multi-stage build
+    ports:
+      - "${PORT:-5000}:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/colortrading}
+      - SESSION_SECRET=${SESSION_SECRET:-developmentsecret1234}
+      - MIGRATE_ON_STARTUP=true
+      - PROCESS_REWARDS_ON_STARTUP=true
+      - DB_CHECK_RETRY=true
+      - TZ=UTC
+      # Optional Stripe API keys
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - VITE_STRIPE_PUBLIC_KEY=${VITE_STRIPE_PUBLIC_KEY:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Database service
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-colortrading}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command: postgres -c 'max_connections=100' -c 'shared_buffers=256MB'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Daily rewards scheduler
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/colortrading}
+    entrypoint: ["sh", "-c"]
+    command: >
+      "
+      # Wait for app to be up first
+      sleep 30 && 
+      echo '🕒 Starting scheduler service...' &&
+      # Run daily rewards every day at midnight
+      while true; do
+        echo '⏰ Running daily rewards job...' &&
+        node scripts/process-rewards.js &&
+        echo '💤 Sleeping until next run cycle (24 hours)...' &&
+        sleep 86400
+      done
+      "
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - app-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # Admin dashboard (optional - uncomment to enable)
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   environment:
+  #     - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@colortrading.com}
+  #     - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-admin}
+  #     - PGADMIN_LISTEN_PORT=5050
+  #   ports:
+  #     - "${PGADMIN_PORT:-5050}:5050"
+  #   volumes:
+  #     - pgadmin-data:/var/lib/pgadmin
+  #   depends_on:
+  #     - postgres
+  #   networks:
+  #     - app-network
+  #   restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  # pgadmin-data:
