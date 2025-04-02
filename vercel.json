@@ -1,8 +1,7 @@
 {
   "version": 2,
   "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "framework": "vite",
+  "outputDirectory": "dist",
   "builds": [
     {
       "src": "dist/**",
@@ -29,7 +28,8 @@
       "dest": "/server/index.ts"
     },
     {
-      "handle": "filesystem"
+      "src": "/(auth|games|wallet|subscription|refer|chat|history|profile|admin)(.*)",
+      "dest": "/dist/index.html"
     },
     {
       "src": "/(.*)",
