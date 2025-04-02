@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './index.css'
 
@@ -10,7 +11,7 @@ style.textContent = `
     width: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #1a1a2e;
+    background: #f1f1f1;
   }
   ::-webkit-scrollbar-thumb {
     background: #5D3FD3;
@@ -18,8 +19,6 @@ style.textContent = `
   }
   
   body {
-    background-color: #212136;
-    color: #F8F9FA;
     font-family: 'Inter', sans-serif;
   }
   
@@ -40,6 +39,8 @@ document.head.appendChild(style);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </React.StrictMode>
 )

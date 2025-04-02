@@ -1,3 +1,52 @@
+# Color Trading Master
+
+A web application for trading and collecting colors.
+
+## Features
+
+- User authentication (login/register)
+- Browse available colors
+- Trade colors with other users
+- View your profile and collection
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+## Deployment
+
+This project is configured for deployment on Vercel.
+
+### Deploying to Vercel
+
+1. Push your code to a GitHub repository
+2. Go to [Vercel](https://vercel.com) and sign in with your GitHub account
+3. Click "New Project" and import your repository
+4. Configure the project:
+   - Framework Preset: Vite
+   - Root Directory: client
+   - Build Command: npm run vercel-build
+   - Output Directory: dist
+5. Click "Deploy"
+
+## Technologies Used
+
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- React Router
+- Headless UI
+
 # Welcome to React Router!
 
 A modern, production-ready template for building full-stack React applications using React Router.
