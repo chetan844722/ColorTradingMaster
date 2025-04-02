@@ -4,6 +4,7 @@ import { Route, Switch } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "./lib/protected-route";
+import { Analytics } from '@vercel/analytics/react';
 
 // Pages
 import AuthPage from "@/pages/auth-page";
@@ -56,6 +57,7 @@ function App() {
       <AuthProvider>
         <Router />
         <Toaster />
+        <Analytics />
       </AuthProvider>
     </QueryClientProvider>
   );

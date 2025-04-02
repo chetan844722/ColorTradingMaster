@@ -1,10 +1,22 @@
-import express, { type Request, Response, NextFunction } from "express";
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const app = express();
+const port = process.env.PORT || 3000;
+
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Serve static files from the dist directory
+app.use(express.static(path.join(__dirname, '../dist')));
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -55,6 +67,16 @@ app.use((req, res, next) => {
   } else {
     serveStatic(app);
   }
+
+  // API routes
+  app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok' });
+  });
+
+  // Handle all other routes by serving the index.html
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../dist/index.html'));
+  });
 
   // ALWAYS serve the app on port 5000
   // this serves both the API and the client.

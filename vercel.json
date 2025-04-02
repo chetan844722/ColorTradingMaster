@@ -2,51 +2,38 @@
   "version": 2,
   "buildCommand": "npm run build",
   "installCommand": "npm install",
-  "framework": null,
+  "framework": "vite",
   "builds": [
+    {
+      "src": "dist/**",
+      "use": "@vercel/static"
+    },
     {
       "src": "server/index.ts",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["client/dist/**", "shared/**"]
+        "includeFiles": ["dist/**"]
       }
-    },
-    {
-      "src": "client/dist/**/*",
-      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
       "src": "/assets/(.*)",
-      "dest": "/client/dist/assets/$1",
+      "dest": "/dist/assets/$1",
       "headers": {
         "cache-control": "public, max-age=31536000, immutable"
       }
     },
     {
-      "src": "/favicon.ico",
-      "dest": "/client/dist/favicon.ico"
-    },
-    {
       "src": "/api/(.*)",
-      "dest": "server/index.ts"
+      "dest": "/server/index.ts"
     },
     {
-      "src": "/ws",
-      "dest": "server/index.ts",
-      "headers": {
-        "Connection": "upgrade",
-        "Upgrade": "websocket"
-      }
-    },
-    {
-      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|webp|svg|woff|woff2|ttf|eot)$)",
-      "dest": "/client/dist/$1"
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "dest": "/client/dist/index.html"
+      "dest": "/dist/index.html"
     }
   ],
   "env": {

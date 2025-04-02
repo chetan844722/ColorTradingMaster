@@ -1,0 +1,15 @@
+{
+  "version": "5",
+  "dialect": "pg",
+  "entries": [
+    {
+      "idx": 0,
+      "name": "0000_initial",
+      "checksum": "1234567890",
+      "sql": [
+        "CREATE TABLE IF NOT EXISTS users (\n    id SERIAL PRIMARY KEY,\n    username VARCHAR(255) NOT NULL UNIQUE,\n    email VARCHAR(255) NOT NULL UNIQUE,\n    password_hash VARCHAR(255) NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,\n    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP\n);\n\nCREATE TABLE IF NOT EXISTS sessions (\n    id SERIAL PRIMARY KEY,\n    user_id INTEGER REFERENCES users(id),\n    token VARCHAR(255) NOT NULL UNIQUE,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,\n    expires_at TIMESTAMP WITH TIME ZONE NOT NULL\n);\n\nCREATE TABLE IF NOT EXISTS transactions (\n    id SERIAL PRIMARY KEY,\n    user_id INTEGER REFERENCES users(id),\n    amount DECIMAL(10,2) NOT NULL,\n    type VARCHAR(50) NOT NULL,\n    status VARCHAR(50) NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP\n);"
+      ],
+      "when": 1712073600000
+    }
+  ]
+} 
